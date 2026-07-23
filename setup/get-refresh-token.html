@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Kontraframe setup — get a Dropbox refresh token</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #17181c; color: #e8e9ec; max-width: 640px; margin: 40px auto; padding: 0 20px; line-height: 1.6; }
+    h1 { font-size: 20px; }
+    input { font: inherit; width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #2e3138; background: #1f2127; color: #e8e9ec; margin: 8px 0; }
+    button { font: inherit; padding: 10px 20px; border-radius: 8px; border: none; background: #5b8cff; color: #fff; cursor: pointer; }
+    code, .token { background: #26282f; padding: 2px 6px; border-radius: 4px; word-break: break-all; }
+    .token { display: block; padding: 14px; margin: 12px 0; font-family: monospace; }
+    .ok { color: #3ecf8e; } .err { color: #ff4757; }
+    ol { padding-left: 20px; }
+  </style>
+</head>
+<body>
+  <h1>Get a Dropbox refresh token for the worker</h1>
+  <p>This one-time step produces the <code>DROPBOX_REFRESH_TOKEN</code> secret for your
+     Cloudflare Worker. The token never leaves this page — copy it straight into
+     <code>wrangler secret put DROPBOX_REFRESH_TOKEN</code>.</p>
+  <p><strong>Before you start:</strong> in the Dropbox App Console → Settings, add this exact
+     page URL to <em>OAuth 2 → Redirect URIs</em>:</p>
+  <p><code id="self-url"></code></p>
+
+  <div id="step1">
+    <label>Your Dropbox App key
+      <input id="appkey" placeholder="e.g. a1b2c3d4e5f6g7h">
+    </label>
+    <button id="go">Authorize with Dropbox</button>
+  </div>
+
+  <div id="result"></div>
+
+  <script>
+    const selfUrl = location.origin + location.pathname;
+    document.getElementById("self-url").textContent = selfUrl;
+
+    const b64url = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes)))
+      .replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+
+    document.getElementById("go").addEventListener("click", async () => {
+      const key = document.getElementById("appkey").value.trim();
+      if (!key) return alert("Paste your Dropbox app key first.");
+      const verifier = b64url(crypto.getRandomValues(new Uint8Array(48)));
+      sessionStorage.setItem("kf_setup_verifier", verifier);
+      sessionStorage.setItem("kf_setup_appkey", key);
+      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+      const params = new URLSearchParams({
+        client_id: key,
+        response_type: "code",
+        code_challenge: b64url(digest),
+        code_challenge_method: "S256",
+        token_access_type: "offline",
+        redirect_uri: selfUrl,
+      });
+      location.href = "https://www.dropbox.com/oauth2/authorize?" + params;
+    });
+
+    (async () => {
+      const code = new URLSearchParams(location.search).get("code");
+      if (!code) return;
+      history.replaceState(null, "", location.pathname);
+      const verifier = sessionStorage.getItem("kf_setup_verifier");
+      const key = sessionStorage.getItem("kf_setup_appkey");
+      const out = document.getElementById("result");
+      if (!verifier || !key) {
+        out.innerHTML = '<p class="err">Session lost — start over.</p>';
+        return;
+      }
+      try {
+        const res = await fetch("https://api.dropboxapi.com/oauth2/token", {
+          method: "POST",
+          body: new URLSearchParams({
+            code, grant_type: "authorization_code",
+            code_verifier: verifier, client_id: key, redirect_uri: selfUrl,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(JSON.stringify(data));
+        document.getElementById("step1").style.display = "none";
+        out.innerHTML = `
+          <p class="ok"><strong>Success.</strong> Your refresh token:</p>
+          <span class="token">${data.refresh_token}</span>
+          <ol>
+            <li>Copy it now (it is not shown again, but you can redo this page anytime).</li>
+            <li>In a terminal, from the <code>worker/</code> folder, run
+                <code>wrangler secret put DROPBOX_REFRESH_TOKEN</code> and paste it.</li>
+            <li>Close this page.</li>
+          </ol>`;
+      } catch (err) {
+        out.innerHTML = '<p class="err">Token exchange failed: ' +
+          String(err.message).replace(/[<>&]/g, "") + "</p>";
+      }
+    })();
+  </script>
+</body>
+</html>
