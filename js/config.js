@@ -4,7 +4,7 @@
 export const CONFIG = {
   // From the Dropbox App Console (https://www.dropbox.com/developers/apps).
   // The app key is public by design — safe to commit.
-  DROPBOX_APP_KEY: "YOUR_DROPBOX_APP_KEY",
+  DROPBOX_APP_KEY: "6agpqa1h9ouo95e",
 
   // Your deployed Cloudflare Worker URL, no trailing slash.
   // Leave empty until you complete the worker setup — the owner app works
