@@ -10,7 +10,7 @@ export const CONFIG = {
   // Leave empty until you complete the worker setup — the owner app works
   // without it (comments are then written straight to Dropbox), but share
   // links for clients require it.
-  WORKER_URL: "",
+  WORKER_URL: "https://kontraframe.kontraframe.workers.dev",
 
   // Shown in the header and page titles.
   APP_NAME: "Kontraframe",
