@@ -164,6 +164,33 @@ export function mountReviewScreen(mount, opts) {
   }
   renderStatus();
 
+  // ── download ────────────────────────────────────────────────────────────
+  // Streams straight from Dropbox: temporary links are served with
+  // Content-Disposition: attachment, so an anchor pointing at one saves the
+  // file under its original name. Pulling it into a blob first would need CORS
+  // Dropbox doesn't grant on these links, and would hold the whole file in
+  // memory. A fresh link is fetched per click because they expire.
+  const downloadBtn = el("button", { class: "btn btn-sm", title: "Download this version" }, "Download");
+  downloadBtn.addEventListener("click", async () => {
+    downloadBtn.disabled = true;
+    downloadBtn.textContent = "Preparing…";
+    try {
+      const media = await mediaForVersion(shownVersion);
+      // Empty download attribute: keep Dropbox's filename, which already
+      // carries the version prefix from upload.
+      const link = el("a", { href: media.url, download: "" });
+      document.body.append(link);
+      link.click();
+      link.remove();
+    } catch (err) {
+      toast(`Could not start download: ${err.message}`, "error");
+    } finally {
+      downloadBtn.disabled = false;
+      downloadBtn.textContent = "Download";
+    }
+  });
+  topStrip.append(downloadBtn);
+
   // ── media loading ───────────────────────────────────────────────────────
   async function mediaForVersion(n) {
     if (mode === "owner") {
