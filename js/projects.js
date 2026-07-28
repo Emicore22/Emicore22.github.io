@@ -1,10 +1,10 @@
 // Owner project browser: project grid, project detail (video rows),
 // in-app upload (≤800 MB) and "Rescan" for files dropped into Dropbox.
 
-import { el, toast, modal, fmtDate, spinner } from "./ui.js";
+import { el, toast, modal, confirmDialog, fmtDate, spinner } from "./ui.js";
 import { getAccessToken } from "./auth.js";
 import * as dbx from "./dropbox.js";
-import { createProject, newVideoEntry, mediaDir } from "./store.js";
+import { createProject, deleteProject, deleteVideo, newVideoEntry, mediaDir } from "./store.js";
 import { STATUSES } from "./versions.js";
 import { CONFIG } from "./config.js";
 
@@ -24,24 +24,90 @@ function installDropGuard() {
 }
 
 export function renderProjectGrid(mount, store, { onOpen }) {
-  mount.replaceChildren(spinner("Loading projects…"));
-  store.loadIndex().then((index) => {
-    const grid = el("div", { class: "project-grid" },
-      ...index.projects.map((p) =>
-        el("button", { class: "project-card", onClick: () => onOpen(p.id) },
-          el("h3", {}, p.name),
-          el("p", { class: "dim" }, `Created ${fmtDate(p.createdAt)}`)
-        )
-      ),
-      el("button", { class: "project-card project-card-new", onClick: () => newProjectDialog(store, onOpen) },
-        el("span", { class: "plus" }, "+"), "New project")
-    );
-    mount.replaceChildren(
-      el("div", { class: "page" }, el("h1", {}, "Projects"), grid)
-    );
-  }).catch((err) => {
-    mount.replaceChildren(el("p", { class: "error-note" }, `Could not load projects: ${err.message}`));
+  const draw = () => {
+    mount.replaceChildren(spinner("Loading projects…"));
+    store.loadIndex().then((index) => {
+      const grid = el("div", { class: "project-grid" },
+        // A div rather than a button: the card holds its own delete button,
+        // and nesting buttons is invalid.
+        ...index.projects.map((p) =>
+          el("div", {
+              class: "project-card", role: "button", tabindex: "0",
+              onClick: () => onOpen(p.id),
+              onKeydown: (e) => {
+                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(p.id); }
+              },
+            },
+            el("button", {
+              class: "btn-link danger card-delete",
+              title: `Delete “${p.name}”`,
+              "aria-label": `Delete project ${p.name}`,
+              onClick: (e) => { e.stopPropagation(); askDeleteProject(store, p, draw); },
+            }, "Delete"),
+            el("h3", {}, p.name),
+            el("p", { class: "dim" }, `Created ${fmtDate(p.createdAt)}`)
+          )
+        ),
+        el("button", { class: "project-card project-card-new", onClick: () => newProjectDialog(store, onOpen) },
+          el("span", { class: "plus" }, "+"), "New project")
+      );
+      mount.replaceChildren(
+        el("div", { class: "page" }, el("h1", {}, "Projects"), grid)
+      );
+    }).catch((err) => {
+      mount.replaceChildren(el("p", { class: "error-note" }, `Could not load projects: ${err.message}`));
+    });
+  };
+  draw();
+}
+
+// Shared by the grid card and the project page. `after` runs once the project
+// is gone (redraw the grid, or navigate away from the dead project).
+async function askDeleteProject(store, project, after) {
+  // The index entry has no video count, so read the project to say precisely
+  // what is about to be destroyed.
+  let videos = null;
+  try {
+    videos = (await store.loadProject(project.id)).videos;
+  } catch {
+    // Unreadable project — deleting is still the right call, just say less.
+  }
+  // An empty project is a cheap mistake to undo, so it gets a plain confirm;
+  // one holding videos gets the full warning and the type-the-name guard.
+  const hasVideos = videos?.length > 0;
+  const ok = await confirmDialog({
+    title: `Delete “${project.name}”?`,
+    body: hasVideos
+      ? [
+          `Deletes ${count(videos.length, "video")}, all comments, and every uploaded file in this project's Dropbox folder.`,
+          "Any share links for this project stop working.",
+          "Dropbox keeps deleted files for at least 30 days, so you can still restore them at dropbox.com.",
+        ]
+      : [
+          videos
+            ? "This project has no videos. Deletes its Dropbox folder."
+            : "Deletes this project's Dropbox folder, including any comments and uploaded files in it.",
+        ],
+    confirmLabel: "Delete project",
+    requireText: hasVideos ? project.name : null,
   });
+  if (!ok) return;
+
+  try {
+    const { revoked, filesRemoved } = await deleteProject(store, project.id);
+    toast(deleteMessage(`“${project.name}”`, revoked, filesRemoved), filesRemoved ? "info" : "error");
+    after?.();
+  } catch (err) {
+    toast(`Could not delete project: ${err.message}`, "error");
+  }
+}
+
+const count = (n, noun) => `${n} ${noun}${n === 1 ? "" : "s"}`;
+
+function deleteMessage(what, revoked, filesRemoved) {
+  if (!filesRemoved) return `Removed ${what}, but its files could not be deleted from Dropbox.`;
+  const shares = revoked ? ` ${count(revoked, "share link")} revoked.` : "";
+  return `Deleted ${what}.${shares}`;
 }
 
 function newProjectDialog(store, onOpen) {
@@ -84,7 +150,13 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
         el("button", {
           class: "btn btn-sm",
           onClick: (e) => { e.stopPropagation(); addVideoDialog(project, v); },
-        }, "+ version")
+        }, "+ version"),
+        el("button", {
+          class: "btn-link danger",
+          title: `Delete “${v.name}”`,
+          "aria-label": `Delete video ${v.name}`,
+          onClick: (e) => { e.stopPropagation(); askDeleteVideo(project, v); },
+        }, "Delete")
       );
     });
 
@@ -93,6 +165,7 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
         el("button", { class: "btn-link", onClick: onBack }, "← Projects"),
         el("h1", {}, project.name),
         el("span", { class: "spacer" }),
+        el("button", { class: "btn-link danger", onClick: () => askDeleteProject(store, project, onBack) }, "Delete project"),
         el("button", { class: "btn", onClick: () => rescan(project) }, "Rescan folder"),
         el("button", { class: "btn btn-primary", onClick: () => addVideoDialog(project) }, "+ Add video")
       ),
@@ -105,6 +178,32 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
     );
     wireDropZone(page, project);
     mount.replaceChildren(page);
+  }
+
+  async function askDeleteVideo(project, video) {
+    const uploaded = video.versions.length;
+    const ok = await confirmDialog({
+      title: `Delete “${video.name}”?`,
+      body: [
+        uploaded
+          ? `Deletes ${count(uploaded, "uploaded version")} and all comments on this video.`
+          : "Deletes this video and any comments on it. No media was uploaded.",
+        "Share links for this video stop working.",
+        uploaded
+          ? "Dropbox keeps deleted files for at least 30 days, so you can still restore them at dropbox.com."
+          : null,
+      ],
+      confirmLabel: "Delete video",
+    });
+    if (!ok) return;
+
+    try {
+      const { revoked, filesRemoved } = await deleteVideo(store, project.id, video.id);
+      toast(deleteMessage(`“${video.name}”`, revoked, filesRemoved), filesRemoved ? "info" : "error");
+      draw();
+    } catch (err) {
+      toast(`Could not delete video: ${err.message}`, "error");
+    }
   }
 
   // Drag & drop upload: dropping a video anywhere on the page opens the

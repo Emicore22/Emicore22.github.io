@@ -148,6 +148,58 @@ export async function createProject(store, name) {
   return project;
 }
 
+// Revoke share links pointing at content that's about to vanish, so reviewers
+// get "this link is no longer active" instead of a bare server error.
+// Best effort — the worker may not be configured, and a failure here must not
+// block the delete itself.
+async function revokeSharesFor(matches) {
+  if (!api.adminConfigured()) return 0;
+  try {
+    const { shares } = await api.listShares();
+    const doomed = shares.filter((s) => !s.revoked && matches(s));
+    for (const share of doomed) await api.revokeShare(share.token);
+    return doomed.length;
+  } catch {
+    return 0;
+  }
+}
+
+// Both deletes drop the metadata first: if the Dropbox cleanup then fails the
+// app's own state is still consistent, and only unreferenced files are left
+// behind. The reverse order would leave the UI pointing at content it can't
+// load. `filesRemoved: false` says exactly that happened, so callers can tell
+// the user rather than claiming a clean delete.
+export async function deleteVideo(store, pid, vid) {
+  const revoked = await revokeSharesFor((s) => s.projectId === pid && s.videoId === vid);
+  await store.updateProject(pid, (project) => ({
+    ...project,
+    videos: project.videos.filter((v) => v.id !== vid),
+  }));
+  let filesRemoved = true;
+  try {
+    await dbx.deleteFile(mediaDir(pid, vid));
+    await dbx.deleteFile(commentsPath(pid, vid));
+  } catch {
+    filesRemoved = false;
+  }
+  return { revoked, filesRemoved };
+}
+
+export async function deleteProject(store, pid) {
+  const revoked = await revokeSharesFor((s) => s.projectId === pid);
+  await store.updateIndex((data) => ({
+    ...data,
+    projects: data.projects.filter((p) => p.id !== pid),
+  }));
+  let filesRemoved = true;
+  try {
+    await dbx.deleteFile(`/projects/${pid}`);
+  } catch {
+    filesRemoved = false;
+  }
+  return { revoked, filesRemoved };
+}
+
 export function newVideoEntry(name, fps) {
   return {
     id: uid("vid"),

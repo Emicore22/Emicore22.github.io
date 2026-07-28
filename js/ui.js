@@ -67,6 +67,59 @@ export function modal(content, { closable = true } = {}) {
   return close;
 }
 
+// Confirmation for destructive actions; resolves true only if the user agrees.
+// `body` takes strings (rendered as dim paragraphs) or ready-made nodes.
+// Pass `requireText` to make the user type that word out first — for deletes
+// that take other content down with them.
+export function confirmDialog({ title, body = [], confirmLabel = "Delete", requireText = null }) {
+  return new Promise((resolve) => {
+    const confirm = el("button", { class: "btn btn-danger", disabled: !!requireText }, confirmLabel);
+    const cancel = el("button", { class: "btn" }, "Cancel");
+    const input = requireText
+      ? el("input", { class: "input", placeholder: `Type “${requireText}” to confirm`, autofocus: true })
+      : null;
+
+    const lines = (Array.isArray(body) ? body : [body])
+      .filter(Boolean)
+      .map((b) => (typeof b === "string" ? el("p", { class: "dim" }, b) : b));
+
+    const close = modal(
+      el("div", {},
+        el("h3", {}, title),
+        ...lines,
+        input ? el("div", { class: "form-row" }, input) : null,
+        el("div", { class: "modal-actions" }, cancel, confirm)
+      ),
+      { closable: false }
+    );
+
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      document.removeEventListener("keydown", onKey);
+      close();
+      resolve(value);
+    };
+    function onKey(e) {
+      if (e.key === "Escape") finish(false);
+    }
+    document.addEventListener("keydown", onKey);
+
+    if (input) {
+      input.addEventListener("input", () => {
+        confirm.disabled = input.value.trim() !== requireText;
+      });
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !confirm.disabled) finish(true);
+      });
+    }
+    confirm.addEventListener("click", () => finish(true));
+    cancel.addEventListener("click", () => finish(false));
+    (input || cancel).focus();
+  });
+}
+
 export function fmtDate(iso) {
   if (!iso) return "";
   const d = new Date(iso);
