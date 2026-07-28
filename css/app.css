@@ -472,6 +472,15 @@ button.status-pill:not(:disabled) { cursor: pointer; }
 .comment-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
 .comment-author { font-weight: 600; font-size: 12.5px; letter-spacing: -0.01em; }
 .comment-date { font-size: 11px; margin-left: auto; color: var(--text-faint); }
+/* Resolve toggle: unlabelled, since it is the only checkbox on a note, and
+   green once ticked so a resolved thread is legible at a glance. */
+.resolve-check {
+  flex: none; margin: 0; width: 15px; height: 15px; cursor: pointer;
+  accent-color: var(--ok);
+  opacity: 0.5; transition: opacity var(--fast) var(--ease);
+}
+.resolve-check:checked, .resolve-check:hover, .resolve-check:focus-visible { opacity: 1; }
+.comment:hover .resolve-check, .comment.selected .resolve-check { opacity: 1; }
 .comment-body { display: flex; align-items: baseline; gap: 8px; }
 .comment-text { white-space: pre-wrap; word-break: break-word; line-height: 1.5; }
 .annot-flag { font-size: 11px; flex: none; }

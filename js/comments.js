@@ -171,13 +171,32 @@ export class CommentsPanel {
   }
 
   _renderThread(c, thread, fps) {
+    // Resolved state reads as a property of the note, so it sits in the header
+    // rather than down among the actions. No label: it is the only checkbox on
+    // a comment, and it turns green when ticked.
+    const resolveBox = this.opts.mode === "owner"
+      ? el("input", {
+          type: "checkbox",
+          class: "resolve-check",
+          checked: c.resolved,
+          title: c.resolved ? "Resolved — click to reopen" : "Mark as resolved",
+          "aria-label": c.resolved ? "Resolved. Click to reopen" : "Mark as resolved",
+          onChange: (e) => {
+            e.stopPropagation();
+            this.opts.onResolve(c.id, e.target.checked);
+          },
+          onClick: (e) => e.stopPropagation(),
+        })
+      : null;
+
     const item = el(
       "div",
       { class: `comment${c.resolved ? " resolved" : ""}${c.id === this.selectedId ? " selected" : ""}` },
       el("div", { class: "comment-meta" },
         el("span", { class: "comment-author" }, c.author + (c.isOwner ? " ★" : "")),
         el("span", { class: "badge" }, `v${c.version}`),
-        el("span", { class: "dim comment-date" }, fmtDate(c.createdAt))
+        el("span", { class: "dim comment-date" }, fmtDate(c.createdAt)),
+        resolveBox
       ),
       el("div", { class: "comment-body" },
         el("button", { class: "tc-chip tc-link" }, secondsToTimecode(c.timeSec, fps)),
@@ -208,19 +227,8 @@ export class CommentsPanel {
     );
 
     if (this.opts.mode === "owner") {
+      // Resolve now lives in the header; only Delete remains here.
       actions.append(
-        el("label", { class: "check-label" },
-          el("input", {
-            type: "checkbox",
-            checked: c.resolved,
-            onChange: (e) => {
-              e.stopPropagation();
-              this.opts.onResolve(c.id, e.target.checked);
-            },
-            onClick: (e) => e.stopPropagation(),
-          }),
-          "Resolved"
-        ),
         el("button", {
           class: "btn-link danger",
           onClick: (e) => {
