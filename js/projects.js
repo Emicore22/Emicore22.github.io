@@ -9,6 +9,17 @@ import { STATUSES } from "./versions.js";
 import { CONFIG } from "./config.js";
 
 const MAX_INAPP_UPLOAD = 150 * 1024 * 1024;
+const VIDEO_FILE = /(^video\/(mp4|webm|quicktime)$)|(\.(mp4|webm|mov)$)/i;
+
+// Without this, a file dropped outside the drop zone makes the browser
+// navigate away from the app to the file itself.
+let dropGuardInstalled = false;
+function installDropGuard() {
+  if (dropGuardInstalled) return;
+  dropGuardInstalled = true;
+  window.addEventListener("dragover", (e) => e.preventDefault());
+  window.addEventListener("drop", (e) => e.preventDefault());
+}
 
 export function renderProjectGrid(mount, store, { onOpen }) {
   mount.replaceChildren(spinner("Loading projects…"));
@@ -75,30 +86,74 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
       );
     });
 
-    mount.replaceChildren(
-      el("div", { class: "page" },
-        el("div", { class: "page-head" },
-          el("button", { class: "btn-link", onClick: onBack }, "← Projects"),
-          el("h1", {}, project.name),
-          el("span", { class: "spacer" }),
-          el("button", { class: "btn", onClick: () => rescan(project) }, "Rescan folder"),
-          el("button", { class: "btn btn-primary", onClick: () => addVideoDialog(project) }, "+ Add video")
-        ),
-        rows.length
-          ? el("div", { class: "video-list" }, ...rows)
-          : el("p", { class: "dim empty-note" },
-              "No videos yet. Add one below 150 MB here, or drop bigger files into ",
-              el("code", {}, `Dropbox/Apps/…/projects/${project.id}/media/`),
-              " and hit Rescan.")
-      )
+    const page = el("div", { class: "page drop-target" },
+      el("div", { class: "page-head" },
+        el("button", { class: "btn-link", onClick: onBack }, "← Projects"),
+        el("h1", {}, project.name),
+        el("span", { class: "spacer" }),
+        el("button", { class: "btn", onClick: () => rescan(project) }, "Rescan folder"),
+        el("button", { class: "btn btn-primary", onClick: () => addVideoDialog(project) }, "+ Add video")
+      ),
+      rows.length
+        ? el("div", { class: "video-list" }, ...rows)
+        : el("p", { class: "dim empty-note" },
+            "No videos yet. Add one below 150 MB here (or drag & drop it onto this page), or drop bigger files into ",
+            el("code", {}, `Dropbox/Apps/…/projects/${project.id}/media/`),
+            " and hit Rescan.")
     );
+    wireDropZone(page, project);
+    mount.replaceChildren(page);
   }
 
-  function addVideoDialog(project, existingVideo = null) {
-    const nameInput = el("input", { class: "input", placeholder: "Video name", value: existingVideo?.name || "" });
+  // Drag & drop upload: dropping a video anywhere on the page opens the
+  // regular upload dialog with the file preselected.
+  function wireDropZone(page, project) {
+    installDropGuard();
+    const overlay = el("div", { class: "drop-overlay hidden" },
+      el("div", { class: "drop-overlay-box" }, "Drop video to upload"));
+    page.append(overlay);
+
+    const hasFiles = (e) => e.dataTransfer?.types?.includes("Files");
+    let depth = 0;
+    const hide = () => { depth = 0; overlay.classList.add("hidden"); };
+
+    page.addEventListener("dragenter", (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      depth++;
+      overlay.classList.remove("hidden");
+    });
+    page.addEventListener("dragover", (e) => hasFiles(e) && e.preventDefault());
+    page.addEventListener("dragleave", (e) => {
+      if (!hasFiles(e)) return;
+      if (--depth <= 0) hide();
+    });
+    page.addEventListener("drop", (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      hide();
+      const files = [...e.dataTransfer.files];
+      const file = files.find((f) => VIDEO_FILE.test(f.type) || VIDEO_FILE.test(f.name));
+      if (!file) return toast("That doesn't look like a video — drop an MP4, WebM or MOV file.", "error");
+      if (file.size > MAX_INAPP_UPLOAD) {
+        return toast("Over 150 MB — drop the file into the project's media folder in Dropbox, then Rescan.", "error");
+      }
+      if (files.length > 1) toast("One file at a time — using the first video.");
+      addVideoDialog(project, null, file);
+    });
+  }
+
+  function addVideoDialog(project, existingVideo = null, droppedFile = null) {
+    const droppedName = droppedFile ? droppedFile.name.replace(/\.[^.]+$/, "") : "";
+    const nameInput = el("input", { class: "input", placeholder: "Video name", value: existingVideo?.name || droppedName });
     const fpsInput = el("input", { class: "input input-sm", type: "number", step: "0.001", min: "1", value: String(existingVideo?.fps || CONFIG.DEFAULT_FPS) });
     const labelInput = el("input", { class: "input", placeholder: existingVideo ? "Version label (e.g. Client notes round 1)" : "Version label (optional)" });
     const fileInput = el("input", { class: "input", type: "file", accept: "video/mp4,video/webm,video/quicktime" });
+    if (droppedFile) {
+      const dt = new DataTransfer();
+      dt.items.add(droppedFile);
+      fileInput.files = dt.files;
+    }
     const progress = el("progress", { class: "upload-progress hidden", max: "1", value: "0" });
     const upload = el("button", { class: "btn btn-primary" }, existingVideo ? "Upload new version" : "Upload");
 
