@@ -5,6 +5,7 @@ import { el, toast, modal, confirmDialog, fmtDate, spinner } from "./ui.js";
 import { getAccessToken } from "./auth.js";
 import * as dbx from "./dropbox.js";
 import { createProject, deleteProject, deleteVideo, newVideoEntry, mediaDir } from "./store.js";
+import { detectFps } from "./fps.js";
 import { STATUSES } from "./versions.js";
 import { CONFIG } from "./config.js";
 
@@ -257,6 +258,7 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
     }
     const progress = el("progress", { class: "upload-progress hidden", max: "1", value: "0" });
     const progressText = el("p", { class: "dim hint upload-progress-text hidden" }, "");
+    const fpsHint = el("p", { class: "dim hint fps-hint hidden" }, "");
     const upload = el("button", { class: "btn btn-primary" }, existingVideo ? "Upload new version" : "Upload");
 
     const close = modal(el("div", {},
@@ -264,12 +266,58 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
       el("p", { class: "dim hint" }, "Export H.264 MP4 (AAC audio) for browser playback — not ProRes or HEVC."),
       existingVideo ? null : el("div", { class: "form-row" }, el("label", {}, "Name"), nameInput),
       el("div", { class: "form-row" }, el("label", {}, "Frame rate"), fpsInput),
+      fpsHint,
       el("div", { class: "form-row" }, el("label", {}, "Label"), labelInput),
       el("div", { class: "form-row" }, fileInput),
       progress,
       progressText,
       el("div", { class: "modal-actions" }, upload)
     ));
+
+    // Read the real frame rate off the chosen file. A rate the user typed in
+    // themselves is never overwritten — it's only reported against.
+    let fpsEdited = false;
+    fpsInput.addEventListener("input", () => { fpsEdited = true; });
+
+    let detectRun = 0;
+    async function detectFileFps(file) {
+      const run = ++detectRun;
+      if (!file) {
+        fpsHint.classList.add("hidden");
+        return;
+      }
+      fpsHint.classList.remove("hidden");
+      fpsHint.textContent = "Reading frame rate…";
+
+      let result = null;
+      try {
+        result = await detectFps(file);
+      } catch {
+        result = null;
+      }
+      if (run !== detectRun) return; // a newer file was picked meanwhile
+
+      if (!result) {
+        fpsHint.textContent = "Couldn't read the frame rate from this file — check the value above.";
+        return;
+      }
+      if (fpsEdited) {
+        fpsHint.textContent = `This file looks like ${result.fps} fps — keeping the rate you typed.`;
+        return;
+      }
+      const previous = Number(fpsInput.value);
+      fpsInput.value = String(result.fps);
+      const how = result.source === "container"
+        ? `Detected ${result.fps} fps from the file.`
+        : `Measured about ${result.fps} fps by playing the file.`;
+      // Changing an existing video's rate is worth calling out explicitly.
+      fpsHint.textContent = existingVideo && previous && previous !== result.fps
+        ? `${how} “${existingVideo.name}” was set to ${previous} fps — uploading applies the new rate.`
+        : how;
+    }
+
+    fileInput.addEventListener("change", () => detectFileFps(fileInput.files[0]));
+    if (droppedFile) detectFileFps(droppedFile);
 
     upload.addEventListener("click", async () => {
       const file = fileInput.files[0];
