@@ -20,6 +20,8 @@ export function versionSwitcher(versions, current, onChange) {
   return select;
 }
 
+const statusClasses = Object.values(STATUSES).map((s) => s.cls);
+
 // Editable: a select styled as the pill, so every status is one click away
 // and the current one is always visible. Otherwise a plain read-only pill.
 export function statusPill(status, { editable = false, onChange } = {}) {
@@ -34,6 +36,14 @@ export function statusPill(status, { editable = false, onChange } = {}) {
       el("option", { value, selected: value === status ? "selected" : null }, s.label)
     )
   );
-  select.addEventListener("change", () => onChange(select.value));
+  select.addEventListener("change", () => {
+    // Recolour on the spot. Saving takes a round trip to Dropbox, and the
+    // colour is the only feedback there is — waiting for the write to land
+    // makes the menu feel broken. The caller reverts if the save fails.
+    const next = STATUSES[select.value] || meta;
+    select.classList.remove(...statusClasses);
+    select.classList.add(next.cls);
+    onChange(select.value);
+  });
   return select;
 }

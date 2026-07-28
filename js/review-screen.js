@@ -148,18 +148,23 @@ export function mountReviewScreen(mount, opts) {
     ? opts.onStatusChange
     : store.setStatus?.bind(store);
 
+  // Guards against a slow save from an earlier pick reverting a later one.
+  let statusSeq = 0;
+
   function renderStatus() {
     const next = statusPill(video.status, {
       editable: !!applyStatus,
       onChange: async (status) => {
         const previous = video.status;
+        if (status === previous) return;
+        // The pill has already recoloured itself; treat the change as applied
+        // and only undo it if the write is refused.
+        const seq = ++statusSeq;
+        video.status = status;
         try {
           await applyStatus(status);
-          video.status = status;
-          renderStatus();
         } catch (err) {
-          // Put the menu back where it was, so it never shows a status the
-          // server rejected.
+          if (seq !== statusSeq) return; // a newer pick owns the state now
           video.status = previous;
           renderStatus();
           toast(`Could not change status: ${err.message}`, "error");
