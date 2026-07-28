@@ -24,6 +24,7 @@ export async function pullAdminKey() {
     if (local) await pushAdminKey(local);
     return api.getAdminKey();
   }
+  notifyEmail = res.data?.notifyEmail ?? "";
   const remote = res.data?.adminKey ?? "";
   if (remote !== api.getAdminKey()) api.setAdminKey(remote);
   return remote;
@@ -36,5 +37,22 @@ export async function pushAdminKey(key) {
     SETTINGS_PATH,
     (data) => ({ ...data, adminKey: key, updatedAt: new Date().toISOString() }),
     () => ({ schema: 1, adminKey: key })
+  );
+}
+
+// Where the worker emails the owner when a reviewer comments. Read from the
+// same file, and read by the worker itself — the browser only edits it.
+let notifyEmail = "";
+
+export function getNotifyEmail() {
+  return notifyEmail;
+}
+
+export async function pushNotifyEmail(email) {
+  notifyEmail = email;
+  await dbx.updateJson(
+    SETTINGS_PATH,
+    (data) => ({ ...data, notifyEmail: email, updatedAt: new Date().toISOString() }),
+    () => ({ schema: 1, notifyEmail: email })
   );
 }
