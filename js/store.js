@@ -54,7 +54,7 @@ export function ownerStore() {
       return (res?.data ?? emptyComments(vid)).comments;
     },
 
-    async addComment(pid, vid, { author, timeSec, text, annotation, version }) {
+    async addComment(pid, vid, { author, timeSec, text, annotation, version, parentId = null }) {
       const comment = {
         id: uid("c"),
         version,
@@ -64,7 +64,9 @@ export function ownerStore() {
         text,
         resolved: false,
         createdAt: new Date().toISOString(),
-        annotation: annotation || null,
+        // A reply is text on an existing note; drawings belong to the note.
+        annotation: parentId ? null : annotation || null,
+        parentId,
       };
       if (viaWorker()) {
         const res = await api.adminComment({ action: "add", projectId: pid, videoId: vid, comment });
@@ -72,7 +74,16 @@ export function ownerStore() {
       }
       await dbx.updateJson(
         commentsPath(pid, vid),
-        (data) => ({ ...data, comments: [...data.comments, comment] }),
+        (data) => {
+          if (comment.parentId) {
+            const parent = data.comments.find((c) => c.id === comment.parentId);
+            if (!parent) throw new Error("The comment being replied to no longer exists");
+            if (parent.parentId) comment.parentId = parent.parentId; // keep threads flat
+            comment.timeSec = parent.timeSec;
+            comment.version = parent.version;
+          }
+          return { ...data, comments: [...data.comments, comment] };
+        },
         () => emptyComments(vid)
       );
       return comment;
@@ -100,7 +111,11 @@ export function ownerStore() {
       }
       await dbx.updateJson(
         commentsPath(pid, vid),
-        (data) => ({ ...data, comments: data.comments.filter((c) => c.id !== commentId) }),
+        (data) => ({
+          ...data,
+          // Replies go with their parent, or they'd be stranded.
+          comments: data.comments.filter((c) => c.id !== commentId && c.parentId !== commentId),
+        }),
         () => emptyComments(vid)
       );
     },
@@ -122,8 +137,8 @@ export function reviewerStore(token) {
       return res.comments;
     },
 
-    async addComment(_pid, _vid, { author, timeSec, text, annotation, version }) {
-      const res = await api.postComment(token, { author, timeSec, text, annotation, version });
+    async addComment(_pid, _vid, { author, timeSec, text, annotation, version, parentId = null }) {
+      const res = await api.postComment(token, { author, timeSec, text, annotation, version, parentId });
       return res.comment;
     },
 

@@ -113,6 +113,24 @@ export function mountReviewScreen(mount, opts) {
         throw err;
       }
     },
+    // Replies carry no timecode or drawing of their own — the worker pins
+    // them to the note they answer.
+    onReply: async ({ text, parentId }) => {
+      try {
+        await store.addComment(opts.projectId, video.id, {
+          author: opts.authorName(),
+          timeSec: comments.find((c) => c.id === parentId)?.timeSec ?? 0,
+          text,
+          annotation: null,
+          version: shownVersion,
+          parentId,
+        });
+        await refreshComments();
+      } catch (err) {
+        toast(`Could not post reply: ${err.message}`, "error");
+        throw err;
+      }
+    },
     onResolve: async (id, resolved) => {
       try {
         await store.setResolved(opts.projectId, video.id, id, resolved);
@@ -126,7 +144,8 @@ export function mountReviewScreen(mount, opts) {
     onDelete: async (id) => {
       try {
         await store.deleteComment(opts.projectId, video.id, id);
-        comments = comments.filter((c) => c.id !== id);
+        // Mirrors the server: a deleted note takes its replies with it.
+        comments = comments.filter((c) => c.id !== id && c.parentId !== id);
         panel.setComments(comments);
       } catch (err) {
         toast(`Could not delete comment: ${err.message}`, "error");

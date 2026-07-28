@@ -133,7 +133,11 @@ async function route(request, env) {
       }
       if (action === "delete") {
         await mutateComments(env, projectId, videoId, (doc) => {
-          doc.comments = doc.comments.filter((c) => c.id !== body.commentId);
+          // Take the thread with the comment; replies left behind would be
+          // invisible but still counted.
+          doc.comments = doc.comments.filter(
+            (c) => c.id !== body.commentId && c.parentId !== body.commentId
+          );
           return doc;
         });
         return json({ ok: true });
@@ -229,14 +233,20 @@ async function readBody(request) {
 
 // ── comment validation ──────────────────────────────────────────────────────
 
+const COMMENT_ID = /^c-[0-9a-f]{6,32}$/;
+
 function validateComment(input, { isOwner }) {
   const text = String(input.text || "").slice(0, LIMITS.TEXT_CHARS).trim();
-  const annotation = validateAnnotation(input.annotation);
+  // Replies are plain text hanging off a comment; drawings stay on the
+  // top-level note they annotate.
+  const parentId = input.parentId ? String(input.parentId) : null;
+  if (parentId && !COMMENT_ID.test(parentId)) throw fail(400, "Invalid parent comment");
+  const annotation = parentId ? null : validateAnnotation(input.annotation);
   if (!text && !annotation) throw fail(400, "Comment is empty");
   const timeSec = Number(input.timeSec);
   if (!Number.isFinite(timeSec) || timeSec < 0) throw fail(400, "Invalid timestamp");
   return {
-    id: input.id && /^c-[0-9a-f]{6,32}$/.test(input.id) ? input.id : "c-" + hex(crypto.getRandomValues(new Uint8Array(8))),
+    id: input.id && COMMENT_ID.test(input.id) ? input.id : "c-" + hex(crypto.getRandomValues(new Uint8Array(8))),
     version: Math.max(1, Math.floor(Number(input.version) || 1)),
     author: String(input.author || (isOwner ? "Owner" : "Reviewer")).slice(0, LIMITS.AUTHOR_CHARS),
     isOwner,
@@ -245,6 +255,7 @@ function validateComment(input, { isOwner }) {
     resolved: false,
     createdAt: new Date().toISOString(),
     annotation,
+    parentId,
   };
 }
 
@@ -369,6 +380,16 @@ function mutateComments(env, pid, vid, mutate) {
 
 function appendComment(env, pid, vid, comment) {
   return mutateComments(env, pid, vid, (doc) => {
+    if (comment.parentId) {
+      const parent = doc.comments.find((c) => c.id === comment.parentId);
+      if (!parent) throw fail(404, "The comment being replied to no longer exists");
+      // Threads stay one level deep: a reply to a reply joins the same thread.
+      if (parent.parentId) comment.parentId = parent.parentId;
+      // Keep the reply pinned where the thread is, so version filters and
+      // timeline ordering treat it as part of that note.
+      comment.timeSec = parent.timeSec;
+      comment.version = parent.version;
+    }
     doc.comments.push(comment);
     return doc;
   });

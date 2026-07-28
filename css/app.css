@@ -279,6 +279,21 @@ button.status-pill:not(:disabled) { cursor: pointer; }
 .annot-flag { font-size: 11px; flex: none; }
 .comment-actions { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
 
+/* ── comment threads ── */
+/* The rule down the left is what reads as "these belong to the note above". */
+.comment-replies {
+  margin: 8px 0 0 10px; padding-left: 12px;
+  border-left: 2px solid var(--border);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.comment-reply .comment-meta { margin-bottom: 2px; }
+.comment-reply .comment-author { font-size: 12px; }
+.comment-reply .comment-text { font-size: 13px; }
+.comment-reply .comment-actions { margin-top: 4px; }
+.reply-box { margin: 8px 0 0 10px; padding-left: 12px; border-left: 2px solid var(--accent); }
+.reply-box .composer-text { width: 100%; }
+.reply-box .composer-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+
 .tc-chip {
   font: inherit; font-size: 11.5px; font-variant-numeric: tabular-nums;
   color: var(--accent); background: var(--accent-soft);

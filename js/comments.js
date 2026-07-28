@@ -141,7 +141,21 @@ export class CommentsPanel {
 
   renderList() {
     const fps = this.opts.fps();
+
+    // Replies live in the same flat list, tied to their parent by parentId.
+    const replies = new Map();
+    for (const c of this.comments) {
+      if (!c.parentId) continue;
+      if (!replies.has(c.parentId)) replies.set(c.parentId, []);
+      replies.get(c.parentId).push(c);
+    }
+    for (const thread of replies.values()) {
+      thread.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    }
+
+    // Filters apply to the note; its replies follow it either way.
     const visible = this.comments
+      .filter((c) => !c.parentId)
       .filter((c) => !(this.hideResolved && c.resolved))
       .filter((c) => this.versionFilter === "all" || String(c.version) === this.versionFilter)
       .sort((a, b) => a.timeSec - b.timeSec || a.createdAt.localeCompare(b.createdAt));
@@ -152,55 +166,145 @@ export class CommentsPanel {
     }
 
     this.listEl.replaceChildren(
-      ...visible.map((c) => {
-        const item = el(
-          "div",
-          { class: `comment${c.resolved ? " resolved" : ""}${c.id === this.selectedId ? " selected" : ""}` },
-          el("div", { class: "comment-meta" },
-            el("span", { class: "comment-author" }, c.author + (c.isOwner ? " ★" : "")),
-            el("span", { class: "badge" }, `v${c.version}`),
-            el("span", { class: "dim comment-date" }, fmtDate(c.createdAt))
-          ),
-          el("div", { class: "comment-body" },
-            el("button", { class: "tc-chip tc-link" }, secondsToTimecode(c.timeSec, fps)),
-            c.annotation ? el("span", { class: "annot-flag", title: "Has drawing" }, "✏️") : null,
-            el("span", { class: "comment-text" }, c.text)
-          )
-        );
-
-        item.querySelector(".tc-link").addEventListener("click", (e) => {
-          e.stopPropagation();
-          this._select(c);
-        });
-        item.addEventListener("click", () => this._select(c));
-
-        if (this.opts.mode === "owner") {
-          const actions = el("div", { class: "comment-actions" },
-            el("label", { class: "check-label" },
-              el("input", {
-                type: "checkbox",
-                checked: c.resolved,
-                onChange: (e) => {
-                  e.stopPropagation();
-                  this.opts.onResolve(c.id, e.target.checked);
-                },
-                onClick: (e) => e.stopPropagation(),
-              }),
-              "Resolved"
-            ),
-            el("button", {
-              class: "btn-link danger",
-              onClick: (e) => {
-                e.stopPropagation();
-                if (confirm("Delete this comment?")) this.opts.onDelete(c.id);
-              },
-            }, "Delete")
-          );
-          item.append(actions);
-        }
-        return item;
-      })
+      ...visible.map((c) => this._renderThread(c, replies.get(c.id) || [], fps))
     );
+  }
+
+  _renderThread(c, thread, fps) {
+    const item = el(
+      "div",
+      { class: `comment${c.resolved ? " resolved" : ""}${c.id === this.selectedId ? " selected" : ""}` },
+      el("div", { class: "comment-meta" },
+        el("span", { class: "comment-author" }, c.author + (c.isOwner ? " ★" : "")),
+        el("span", { class: "badge" }, `v${c.version}`),
+        el("span", { class: "dim comment-date" }, fmtDate(c.createdAt))
+      ),
+      el("div", { class: "comment-body" },
+        el("button", { class: "tc-chip tc-link" }, secondsToTimecode(c.timeSec, fps)),
+        c.annotation ? el("span", { class: "annot-flag", title: "Has drawing" }, "✏️") : null,
+        el("span", { class: "comment-text" }, c.text)
+      )
+    );
+
+    item.querySelector(".tc-link").addEventListener("click", (e) => {
+      e.stopPropagation();
+      this._select(c);
+    });
+    item.addEventListener("click", () => this._select(c));
+
+    if (thread.length) {
+      item.append(el("div", { class: "comment-replies" },
+        ...thread.map((r) => this._renderReply(r))));
+    }
+
+    const actions = el("div", { class: "comment-actions" },
+      el("button", {
+        class: "btn-link",
+        onClick: (e) => {
+          e.stopPropagation();
+          this._toggleReplyBox(item, c);
+        },
+      }, thread.length ? `Reply (${thread.length})` : "Reply")
+    );
+
+    if (this.opts.mode === "owner") {
+      actions.append(
+        el("label", { class: "check-label" },
+          el("input", {
+            type: "checkbox",
+            checked: c.resolved,
+            onChange: (e) => {
+              e.stopPropagation();
+              this.opts.onResolve(c.id, e.target.checked);
+            },
+            onClick: (e) => e.stopPropagation(),
+          }),
+          "Resolved"
+        ),
+        el("button", {
+          class: "btn-link danger",
+          onClick: (e) => {
+            e.stopPropagation();
+            const warning = thread.length
+              ? `Delete this comment and its ${thread.length} ${thread.length === 1 ? "reply" : "replies"}?`
+              : "Delete this comment?";
+            if (confirm(warning)) this.opts.onDelete(c.id);
+          },
+        }, "Delete")
+      );
+    }
+    item.append(actions);
+    return item;
+  }
+
+  _renderReply(r) {
+    const reply = el("div", { class: "comment-reply" },
+      el("div", { class: "comment-meta" },
+        el("span", { class: "comment-author" }, r.author + (r.isOwner ? " ★" : "")),
+        el("span", { class: "dim comment-date" }, fmtDate(r.createdAt))
+      ),
+      el("span", { class: "comment-text" }, r.text)
+    );
+    if (this.opts.mode === "owner") {
+      reply.append(el("div", { class: "comment-actions" },
+        el("button", {
+          class: "btn-link danger",
+          onClick: (e) => {
+            e.stopPropagation();
+            if (confirm("Delete this reply?")) this.opts.onDelete(r.id);
+          },
+        }, "Delete")
+      ));
+    }
+    return reply;
+  }
+
+  // One reply box open at a time, inline under the note it belongs to.
+  _toggleReplyBox(item, parent) {
+    const existing = item.querySelector(".reply-box");
+    if (existing) {
+      existing.remove();
+      this.replyingTo = null;
+      return;
+    }
+    this.listEl.querySelectorAll(".reply-box").forEach((n) => n.remove());
+    this.replyingTo = parent.id;
+
+    const input = el("textarea", { class: "composer-text", rows: 2, placeholder: "Write a reply…" });
+    const send = el("button", { class: "btn btn-primary btn-sm" }, "Reply");
+    const cancel = el("button", { class: "btn btn-sm" }, "Cancel");
+    const box = el("div", { class: "reply-box", onClick: (e) => e.stopPropagation() },
+      input,
+      el("div", { class: "composer-actions" }, cancel, send)
+    );
+
+    const submit = async () => {
+      const text = input.value.trim();
+      if (!text) return;
+      send.disabled = true;
+      cancel.disabled = true;
+      try {
+        await this.opts.onReply({ text, parentId: parent.id });
+        this.replyingTo = null;
+        // The list re-renders from the refreshed comments, dropping the box.
+      } catch {
+        send.disabled = false;
+        cancel.disabled = false;
+      }
+    };
+    send.addEventListener("click", submit);
+    cancel.addEventListener("click", (e) => {
+      e.stopPropagation();
+      box.remove();
+      this.replyingTo = null;
+    });
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
+      if (e.key === "Escape") { e.stopPropagation(); box.remove(); this.replyingTo = null; }
+    });
+
+    item.append(box);
+    input.focus();
   }
 
   _select(c) {
