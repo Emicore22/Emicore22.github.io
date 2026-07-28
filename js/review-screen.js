@@ -142,15 +142,26 @@ export function mountReviewScreen(mount, opts) {
   };
 
   // ── header widgets: version switcher + status pill ──────────────────────
+  // Reviewers set status too — signing off is the point of the link. The owner
+  // writes project.json directly; the reviewer goes through the worker.
+  const applyStatus = mode === "owner"
+    ? opts.onStatusChange
+    : store.setStatus?.bind(store);
+
   function renderStatus() {
     const next = statusPill(video.status, {
-      editable: mode === "owner" && !!opts.onStatusChange,
+      editable: !!applyStatus,
       onChange: async (status) => {
+        const previous = video.status;
         try {
-          await opts.onStatusChange(status);
+          await applyStatus(status);
           video.status = status;
           renderStatus();
         } catch (err) {
+          // Put the menu back where it was, so it never shows a status the
+          // server rejected.
+          video.status = previous;
+          renderStatus();
           toast(`Could not change status: ${err.message}`, "error");
         }
       },

@@ -131,6 +131,11 @@ export function reviewerStore(token) {
       const res = await api.getMedia(token, version);
       return { url: res.mediaUrl, expiresAt: res.mediaExpiresAt };
     },
+
+    // The worker writes project.json; reviewers have no Dropbox access.
+    async setStatus(status) {
+      await api.postStatus(token, status);
+    },
   };
 }
 

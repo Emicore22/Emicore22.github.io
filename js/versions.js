@@ -20,17 +20,20 @@ export function versionSwitcher(versions, current, onChange) {
   return select;
 }
 
-// Owner gets a clickable pill cycling through a menu; reviewer gets read-only.
+// Editable: a select styled as the pill, so every status is one click away
+// and the current one is always visible. Otherwise a plain read-only pill.
 export function statusPill(status, { editable = false, onChange } = {}) {
   const meta = STATUSES[status] || STATUSES.in_review;
-  const pill = el("button", { class: `status-pill ${meta.cls}`, disabled: editable ? null : "disabled" }, meta.label);
-  if (editable) {
-    pill.addEventListener("click", () => {
-      const keys = Object.keys(STATUSES);
-      const next = keys[(keys.indexOf(status) + 1) % keys.length];
-      onChange(next);
-    });
-    pill.title = "Click to change status";
+  if (!editable) {
+    return el("span", { class: `status-pill ${meta.cls}` }, meta.label);
   }
-  return pill;
+
+  const select = el(
+    "select", { class: `status-pill status-select ${meta.cls}`, title: "Change status" },
+    ...Object.entries(STATUSES).map(([value, s]) =>
+      el("option", { value, selected: value === status ? "selected" : null }, s.label)
+    )
+  );
+  select.addEventListener("change", () => onChange(select.value));
+  return select;
 }

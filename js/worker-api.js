@@ -61,6 +61,10 @@ export function postComment(token, comment) {
   return request("/api/comments", { method: "POST", body: { token, ...comment } });
 }
 
+export function postStatus(token, status) {
+  return request("/api/status", { method: "POST", body: { token, status } });
+}
+
 // ── Owner (admin) endpoints ─────────────────────────────────────────────────
 
 export function adminComment(payload) {

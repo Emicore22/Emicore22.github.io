@@ -7,6 +7,9 @@
 //   DROPBOX_APP_KEY, DROPBOX_APP_SECRET, DROPBOX_REFRESH_TOKEN, ADMIN_KEY
 // Vars (wrangler.toml): ALLOWED_ORIGIN
 
+// Must match STATUSES in js/versions.js.
+const STATUSES = ["in_review", "needs_changes", "approved"];
+
 const LIMITS = {
   BODY_BYTES: 64 * 1024,
   TEXT_CHARS: 2000,
@@ -94,6 +97,17 @@ async function route(request, env) {
     const comment = validateComment(body, { isOwner: false });
     await appendComment(env, share.projectId, share.videoId, comment);
     return json({ comment });
+  }
+  // Reviewers set the approval status — the whole point of sending them a
+  // link. Scoped to the one video their token covers, and shares the comment
+  // rate limit so a token can't hammer Dropbox.
+  if (path === "/api/status" && request.method === "POST") {
+    const body = await readBody(request);
+    const share = await requireShare(env, body.token);
+    rateLimit(share.token);
+    if (!STATUSES.includes(body.status)) throw fail(400, "Unknown status");
+    await setVideoStatus(env, share.projectId, share.videoId, body.status);
+    return json({ status: body.status });
   }
 
   // ── owner endpoints (ADMIN_KEY auth) ──
@@ -358,6 +372,23 @@ function appendComment(env, pid, vid, comment) {
     doc.comments.push(comment);
     return doc;
   });
+}
+
+// Compare-and-swap against project.json so a reviewer's status change can't
+// clobber a concurrent edit by the owner.
+async function setVideoStatus(env, pid, vid, status) {
+  let found = false;
+  await mutateJson(env, `/projects/${pid}/project.json`, (project) => {
+    const video = project.videos.find((v) => v.id === vid);
+    if (video) {
+      video.status = status;
+      found = true;
+    }
+    return project;
+  }, () => {
+    throw fail(404, "Project not found");
+  });
+  if (!found) throw fail(404, "Video not found");
 }
 
 async function readProject(env, pid) {
