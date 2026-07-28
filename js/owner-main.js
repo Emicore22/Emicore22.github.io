@@ -9,6 +9,7 @@ import { ownerStore } from "./store.js";
 import { renderProjectGrid, renderProjectDetail } from "./projects.js";
 import { mountReviewScreen } from "./review-screen.js";
 import { openShareDialog } from "./share.js";
+import { pullAdminKey, pushAdminKey } from "./settings.js";
 
 const app = document.getElementById("app");
 const store = ownerStore();
@@ -42,13 +43,21 @@ function openSettings() {
       "The admin key lets this app manage share links and comments through your Cloudflare Worker. ",
       "It must match the ADMIN_KEY secret you set with wrangler."),
     el("div", { class: "form-row" }, el("label", {}, "Admin key"), keyInput),
+    el("p", { class: "dim hint" }, "Saved to your Dropbox, so you only enter it once — any browser you sign in with picks it up."),
     el("p", { class: "dim hint" }, api.workerConfigured() ? `Worker: ${CONFIG.WORKER_URL}` : "Worker URL not set in js/config.js — share links are disabled."),
     el("div", { class: "modal-actions" }, save)
   ));
-  save.addEventListener("click", () => {
-    api.setAdminKey(keyInput.value.trim());
-    toast("Settings saved.");
-    close();
+  save.addEventListener("click", async () => {
+    save.disabled = true;
+    try {
+      await pushAdminKey(keyInput.value.trim());
+      toast("Settings saved to your Dropbox.");
+      close();
+    } catch (err) {
+      // pushAdminKey stores locally first, so this browser still works.
+      toast(`Saved on this device only — Dropbox write failed: ${err.message}`, "error");
+      save.disabled = false;
+    }
   });
 }
 
@@ -138,6 +147,12 @@ async function boot() {
     return;
   }
   app.replaceChildren(header(), el("main", { id: "main" }));
+  // Before routing, so screens see the right adminConfigured() state.
+  try {
+    await pullAdminKey();
+  } catch {
+    // Offline or unreadable settings — fall back to whatever this browser has.
+  }
   route();
 }
 

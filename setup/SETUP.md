@@ -79,6 +79,8 @@ If your GitHub Pages address is not `https://emicore22.github.io`, also update
 1. Paste the worker URL into `js/config.js` → `WORKER_URL` (no trailing slash).
    Commit, push.
 2. In the owner app, open **Settings** (top right) and paste your ADMIN_KEY.
+   It is saved to `settings.json` in the app's own Dropbox folder, so this is
+   a one-time step — every browser you sign in to Dropbox with picks it up.
 
 ## 7. Smoke test
 
@@ -96,7 +98,9 @@ If your GitHub Pages address is not `https://emicore22.github.io`, also update
 - **"Link expired" for a fresh link** — check the worker secrets are all set
   (`wrangler secret list`) and that `WORKER_URL` in `js/config.js` is correct.
 - **Share button says worker not configured** — `WORKER_URL` is empty in
-  `js/config.js`, or you haven't saved the ADMIN_KEY in Settings.
+  `js/config.js`, or you haven't saved the ADMIN_KEY in Settings. If Settings
+  looks empty on a browser where you had already saved it, that browser
+  cleared its storage; the key is re-read from Dropbox on the next load.
 - **Upload rejected as too large** — the in-app limit is 800 MB. Files above
   150 MB upload in 8 MB chunks, so keep the tab open until the bar completes.
   For anything bigger, drop the file into
