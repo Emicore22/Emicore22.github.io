@@ -97,6 +97,8 @@ If your GitHub Pages address is not `https://emicore22.github.io`, also update
   (`wrangler secret list`) and that `WORKER_URL` in `js/config.js` is correct.
 - **Share button says worker not configured** — `WORKER_URL` is empty in
   `js/config.js`, or you haven't saved the ADMIN_KEY in Settings.
-- **Upload fails at exactly 150 MB** — that's the in-app limit. Drop the file
-  into `Dropbox/Apps/kontraframe/projects/<project>/media/<video-id>/` named
+- **Upload rejected as too large** — the in-app limit is 800 MB. Files above
+  150 MB upload in 8 MB chunks, so keep the tab open until the bar completes.
+  For anything bigger, drop the file into
+  `Dropbox/Apps/kontraframe/projects/<project>/media/<video-id>/` named
   `v2-something.mp4`, then use **Rescan folder**.

@@ -1,5 +1,5 @@
 // Owner project browser: project grid, project detail (video rows),
-// in-app upload (≤150 MB) and "Rescan" for files dropped into Dropbox.
+// in-app upload (≤800 MB) and "Rescan" for files dropped into Dropbox.
 
 import { el, toast, modal, fmtDate, spinner } from "./ui.js";
 import { getAccessToken } from "./auth.js";
@@ -8,7 +8,9 @@ import { createProject, newVideoEntry, mediaDir } from "./store.js";
 import { STATUSES } from "./versions.js";
 import { CONFIG } from "./config.js";
 
-const MAX_INAPP_UPLOAD = 150 * 1024 * 1024;
+const MAX_INAPP_UPLOAD = 800 * 1024 * 1024;
+const MAX_LABEL = `${Math.round(MAX_INAPP_UPLOAD / (1024 * 1024))} MB`;
+const OVER_LIMIT_MSG = `Over ${MAX_LABEL} — drop the file into the project's media folder in Dropbox, then Rescan.`;
 const VIDEO_FILE = /(^video\/(mp4|webm|quicktime)$)|(\.(mp4|webm|mov)$)/i;
 
 // Without this, a file dropped outside the drop zone makes the browser
@@ -97,7 +99,7 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
       rows.length
         ? el("div", { class: "video-list" }, ...rows)
         : el("p", { class: "dim empty-note" },
-            "No videos yet. Add one below 150 MB here (or drag & drop it onto this page), or drop bigger files into ",
+            `No videos yet. Add one below ${MAX_LABEL} here (or drag & drop it onto this page), or drop bigger files into `,
             el("code", {}, `Dropbox/Apps/…/projects/${project.id}/media/`),
             " and hit Rescan.")
     );
@@ -136,7 +138,7 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
       const file = files.find((f) => VIDEO_FILE.test(f.type) || VIDEO_FILE.test(f.name));
       if (!file) return toast("That doesn't look like a video — drop an MP4, WebM or MOV file.", "error");
       if (file.size > MAX_INAPP_UPLOAD) {
-        return toast("Over 150 MB — drop the file into the project's media folder in Dropbox, then Rescan.", "error");
+        return toast(OVER_LIMIT_MSG, "error");
       }
       if (files.length > 1) toast("One file at a time — using the first video.");
       addVideoDialog(project, null, file);
@@ -155,6 +157,7 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
       fileInput.files = dt.files;
     }
     const progress = el("progress", { class: "upload-progress hidden", max: "1", value: "0" });
+    const progressText = el("p", { class: "dim hint upload-progress-text hidden" }, "");
     const upload = el("button", { class: "btn btn-primary" }, existingVideo ? "Upload new version" : "Upload");
 
     const close = modal(el("div", {},
@@ -165,6 +168,7 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
       el("div", { class: "form-row" }, el("label", {}, "Label"), labelInput),
       el("div", { class: "form-row" }, fileInput),
       progress,
+      progressText,
       el("div", { class: "modal-actions" }, upload)
     ));
 
@@ -172,11 +176,13 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
       const file = fileInput.files[0];
       if (!file) return toast("Choose a video file first.", "error");
       if (file.size > MAX_INAPP_UPLOAD) {
-        return toast("Over 150 MB — drop the file into the project's media folder in Dropbox, then Rescan.", "error");
+        return toast(OVER_LIMIT_MSG, "error");
       }
       const name = existingVideo?.name || nameInput.value.trim() || file.name.replace(/\.[^.]+$/, "");
       upload.disabled = true;
       progress.classList.remove("hidden");
+      progressText.classList.remove("hidden");
+      const totalMB = file.size / (1024 * 1024);
       try {
         const entry = existingVideo || newVideoEntry(name, Number(fpsInput.value));
         const n = (existingVideo?.versions.at(-1)?.n || 0) + 1;
@@ -185,8 +191,13 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
         const accessToken = await getAccessToken();
         const meta = await dbx.uploadFile(path, file, {
           accessToken,
-          onProgress: (f) => (progress.value = f),
+          onProgress: (f) => {
+            progress.value = f;
+            progressText.textContent =
+              `${Math.round(f * 100)}% — ${(f * totalMB).toFixed(0)} of ${totalMB.toFixed(0)} MB. Keep this tab open.`;
+          },
         });
+        progressText.textContent = "Finishing up…";
         const version = { n, path: meta.path_display ?? path, uploadedAt: new Date().toISOString(), label: labelInput.value.trim() };
         await store.updateProject(projectId, (p) => {
           const existing = p.videos.find((v) => v.id === entry.id);
@@ -204,12 +215,14 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
         draw();
       } catch (err) {
         toast(`Upload failed: ${err.message}`, "error");
+        progress.classList.add("hidden");
+        progressText.classList.add("hidden");
         upload.disabled = false;
       }
     });
   }
 
-  // Register media files added directly in Dropbox (e.g. >150 MB exports).
+  // Register media files added directly in Dropbox (e.g. oversized exports).
   async function rescan(project) {
     toast("Scanning media folders…");
     try {
