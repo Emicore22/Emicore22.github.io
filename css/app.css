@@ -205,8 +205,29 @@ main#main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .input[type="file"]::file-selector-button:hover { background: var(--surface-3); border-color: var(--border-strong); }
 
 .input-sm { width: 96px; }
-.select { width: auto; cursor: pointer; }
-.select-sm { padding: 4px 8px; font-size: 12px; }
+
+/* Native selects reserve room for the system chevron and size themselves to
+   their longest option, so a short value like "v1" ends up stranded beside a
+   far-off arrow. Drawing the chevron ourselves puts it next to the value, and
+   field-sizing shrinks the box to the chosen option where it is supported. */
+.select {
+  width: auto; cursor: pointer;
+  appearance: none;
+  field-sizing: content;
+  min-width: 4.5em; max-width: 15em;
+  padding: 7px 27px 7px 11px;
+  background-repeat: no-repeat; background-position: right 9px center;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='6' viewBox='0 0 9 6'%3E%3Cpath d='M1 1l3.5 3.5L8 1' fill='none' stroke='%238b929e' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+.select:hover { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='6' viewBox='0 0 9 6'%3E%3Cpath d='M1 1l3.5 3.5L8 1' fill='none' stroke='%23edeff3' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+.select option { background: var(--surface); color: var(--text); }
+.select-sm { padding: 4px 24px 4px 9px; font-size: 12px; background-position: right 8px center; }
+
+/* Safari has no field-sizing yet, so those boxes stay as wide as their longest
+   option. Centring the value keeps it from stranding against the left edge. */
+@supports not (field-sizing: content) {
+  .version-select, .status-select { text-align: center; text-align-last: center; }
+}
 
 .form-row { display: flex; align-items: center; gap: 12px; margin: 12px 0; }
 .form-row label { flex: none; width: 90px; color: var(--text-dim); font-size: 13px; }
@@ -305,20 +326,32 @@ main#main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 }
 button.status-pill:not(:disabled) { cursor: pointer; }
 /* Keeps the pill shape while behaving as a menu — the arrow is drawn in, since
-   appearance:none drops the native one. */
+   appearance:none drops the native one. Each status carries its own arrow:
+   currentColor does not reach inside a data-URI SVG (it is a separate
+   document, so it would resolve to black), and the arrow has to match the
+   pill's text. */
 .status-select {
-  appearance: none; cursor: pointer; padding-right: 26px;
+  appearance: none; cursor: pointer;
+  padding-right: 25px; field-sizing: content;
   background-repeat: no-repeat; background-position: right 9px center;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='currentColor'/%3E%3C/svg%3E");
   transition: filter var(--fast) var(--ease);
 }
-.status-select:hover { filter: brightness(1.25); }
+.status-select:hover { filter: brightness(1.2); }
 .status-select option { background: var(--surface); color: var(--text); font-weight: 500; }
 /* background-color, not the background shorthand: these classes combine with
    .status-select, whose dropdown arrow is a background-image. */
 .status-review { background-color: var(--accent-soft); color: var(--accent); border-color: rgba(107, 147, 255, 0.25); }
 .status-changes { background-color: var(--warn-soft); color: var(--warn); border-color: rgba(245, 166, 35, 0.25); }
 .status-approved { background-color: var(--ok-soft); color: var(--ok); border-color: rgba(62, 207, 142, 0.25); }
+.status-select.status-review {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='6' viewBox='0 0 9 6'%3E%3Cpath d='M1 1l3.5 3.5L8 1' fill='none' stroke='%236b93ff' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+.status-select.status-changes {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='6' viewBox='0 0 9 6'%3E%3Cpath d='M1 1l3.5 3.5L8 1' fill='none' stroke='%23f5a623' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+.status-select.status-approved {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='6' viewBox='0 0 9 6'%3E%3Cpath d='M1 1l3.5 3.5L8 1' fill='none' stroke='%233ecf8e' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
 
 /* ── review screen ── */
 .review-layout { flex: 1; min-height: 0; display: flex; flex-direction: column; }
