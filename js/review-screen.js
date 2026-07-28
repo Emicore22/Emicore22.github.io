@@ -131,13 +131,15 @@ export function mountReviewScreen(mount, opts) {
         throw err;
       }
     },
+    // The panel has already greyed the note and updated the model; this only
+    // persists it, and undoes the change if the write is refused.
     onResolve: async (id, resolved) => {
       try {
         await store.setResolved(opts.projectId, video.id, id, resolved);
-        const c = comments.find((c) => c.id === id);
-        if (c) c.resolved = resolved;
-        panel.setComments(comments);
       } catch (err) {
+        const c = comments.find((c) => c.id === id);
+        if (c) c.resolved = !resolved;
+        panel.setComments(comments);
         toast(`Could not update comment: ${err.message}`, "error");
       }
     },

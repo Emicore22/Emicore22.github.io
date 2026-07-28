@@ -183,7 +183,17 @@ export class CommentsPanel {
           "aria-label": c.resolved ? "Resolved. Click to reopen" : "Mark as resolved",
           onChange: (e) => {
             e.stopPropagation();
-            this.opts.onResolve(c.id, e.target.checked);
+            const on = e.target.checked;
+            // Grey the note now rather than after the write lands: saving is a
+            // round trip to Dropbox, and the dimming is the actual feedback.
+            // The review screen puts it back if the write is refused.
+            c.resolved = on;
+            item.classList.toggle("resolved", on);
+            e.target.title = on ? "Resolved — click to reopen" : "Mark as resolved";
+            e.target.setAttribute("aria-label", on ? "Resolved. Click to reopen" : "Mark as resolved");
+            this.opts.onResolve(c.id, on);
+            // With the filter on, a resolved note should leave the list.
+            if (this.hideResolved) this.renderList();
           },
           onClick: (e) => e.stopPropagation(),
         })
