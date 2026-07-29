@@ -25,12 +25,12 @@ let sharesCache = { data: null, fetchedAt: 0 };
 const writeLog = new Map(); // token → [timestamps]
 
 export default {
-  async fetch(request, env, ctx) {
+  async fetch(request, env) {
     const cors = corsHeaders(request, env);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
 
     try {
-      const res = await route(request, env, ctx);
+      const res = await route(request, env);
       for (const [k, v] of Object.entries(cors)) res.headers.set(k, v);
       return res;
     } catch (err) {
@@ -71,7 +71,7 @@ function fail(status, message, code) {
   return err;
 }
 
-async function route(request, env, ctx) {
+async function route(request, env) {
   const url = new URL(request.url);
   const path = url.pathname;
 
@@ -88,7 +88,7 @@ async function route(request, env, ctx) {
   if (path === "/api/comments" && request.method === "GET") {
     const share = await requireShare(env, url.searchParams.get("token"));
     const doc = await readComments(env, share.projectId, share.videoId);
-    return json({ comments: stripEmails(doc.comments) });
+    return json({ comments: doc.comments });
   }
   if (path === "/api/comments" && request.method === "POST") {
     const body = await readBody(request);
@@ -96,8 +96,7 @@ async function route(request, env, ctx) {
     rateLimit(share.token);
     const comment = validateComment(body, { isOwner: false });
     await appendComment(env, share.projectId, share.videoId, comment);
-    queueNotification(ctx, env, { projectId: share.projectId, videoId: share.videoId, comment });
-    return json({ comment: stripEmails([comment])[0] });
+    return json({ comment });
   }
   // Reviewers set the approval status — the whole point of sending them a
   // link. Scoped to the one video their token covers, and shares the comment
@@ -122,8 +121,7 @@ async function route(request, env, ctx) {
       if (action === "add") {
         const comment = validateComment(body.comment || {}, { isOwner: true });
         await appendComment(env, projectId, videoId, comment);
-        queueNotification(ctx, env, { projectId, videoId, comment });
-        return json({ comment: stripEmails([comment])[0] });
+        return json({ comment });
       }
       if (action === "resolve") {
         await mutateComments(env, projectId, videoId, (doc) => {
@@ -145,25 +143,6 @@ async function route(request, env, ctx) {
         return json({ ok: true });
       }
       throw fail(400, "Unknown action");
-    }
-
-    // Lets the notification address be set without the browser — the app's
-    // Settings dialog writes the same field in the same file. Deliberately
-    // never returns adminKey, only what it manages.
-    if (path === "/admin/settings" && request.method === "GET") {
-      const s = await readSettings(env);
-      return json({ notifyEmail: s.notifyEmail || "" });
-    }
-    if (path === "/admin/settings" && request.method === "POST") {
-      const body = await readBody(request);
-      const email = String(body.notifyEmail ?? "").trim();
-      if (email && !validEmail(email)) throw fail(400, "That doesn't look like an email address");
-      await mutateJson(env, "/settings.json", (doc) => ({
-        ...doc,
-        notifyEmail: email,
-        updatedAt: new Date().toISOString(),
-      }), () => ({ schema: 1, notifyEmail: email }));
-      return json({ notifyEmail: email });
     }
 
     if (path === "/admin/shares" && request.method === "GET") {
@@ -277,8 +256,6 @@ function validateComment(input, { isOwner }) {
     createdAt: new Date().toISOString(),
     annotation,
     parentId,
-    // Kept server-side only, so replies can reach the person who wrote this.
-    authorEmail: validEmail(input.authorEmail) ? String(input.authorEmail).trim().toLowerCase() : null,
   };
 }
 
@@ -474,7 +451,7 @@ async function buildSession(env, share) {
       // Media paths are intentionally stripped — reviewers never see them.
       versions: video.versions.map((v) => ({ n: v.n, label: v.label || "" })),
     },
-    comments: stripEmails(commentsDoc.comments),
+    comments: commentsDoc.comments,
     mediaUrl: media.mediaUrl,
     mediaExpiresAt: media.mediaExpiresAt,
   };
@@ -483,137 +460,3 @@ async function buildSession(env, share) {
 function hex(bytes) {
   return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
-
-// ── email notifications ─────────────────────────────────────────────────────
-// Entirely optional: with no provider configured every path below no-ops, so
-// commenting keeps working exactly as before. Sending is also never awaited by
-// the request — a bounced email must not fail someone's comment.
-
-// The owner's notification address lives in the same settings.json the app
-// writes for the admin key, so there is no extra secret to keep in sync.
-//
-// Deliberately uncached. A per-isolate cache only invalidates in the isolate
-// that handled the write, so every other isolate keeps serving a stale address
-// — meaning a comment silently notifies nobody for minutes after a change.
-// This runs once per notification, alongside several other Dropbox reads, so
-// the extra call costs nothing worth having that bug for.
-async function readSettings(env) {
-  try {
-    const res = await downloadJson(env, "/settings.json");
-    return res?.data || {};
-  } catch {
-    return {};
-  }
-}
-
-const escapeHtml = (s) =>
-  String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-
-const validEmail = (e) => typeof e === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim()) && e.length <= 254;
-
-function timecode(seconds, fps) {
-  const f = Math.round(Number(seconds) * fps);
-  const rate = Math.round(fps) || 25;
-  const ff = f % rate;
-  const total = Math.floor(f / rate);
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${pad(Math.floor(total / 3600))}:${pad(Math.floor(total / 60) % 60)}:${pad(total % 60)}:${pad(ff)}`;
-}
-
-// Whether any sender is wired up at all. Everything notification-related
-// checks this first so an unconfigured worker does no extra Dropbox reads.
-const canSend = (env) => !!(env.NOTIFY_FROM && (env.EMAIL || env.RESEND_API_KEY));
-
-// Two senders, one interface. The Cloudflare binding needs no API key but
-// requires the sending domain to be on Cloudflare DNS; Resend is the fallback.
-// Only this function knows the difference.
-async function sendEmail(env, { to, subject, html, text }) {
-  if (!canSend(env)) return;
-  const recipients = Array.isArray(to) ? to : [to];
-
-  if (env.EMAIL) {
-    // The binding sends to one recipient per call.
-    for (const address of recipients) {
-      await env.EMAIL.send({ to: address, from: env.NOTIFY_FROM, subject, html, text });
-    }
-    return;
-  }
-
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from: env.NOTIFY_FROM, to: recipients, subject, html, text }),
-  });
-  if (!res.ok) throw new Error(`Email send failed (${res.status}): ${(await res.text()).slice(0, 200)}`);
-}
-
-// A reviewer's note emails the owner; the owner's note emails everyone who has
-// taken part on that video. Never the person who just wrote it.
-async function notifyComment(env, { projectId, videoId, comment }) {
-  if (!canSend(env)) return;
-
-  const settings = await readSettings(env);
-  const ownerEmail = settings.notifyEmail || "";
-  const doc = await readComments(env, projectId, videoId);
-  const project = await readProject(env, projectId).catch(() => null);
-  const video = project?.videos?.find((v) => v.id === videoId);
-  const site = (env.SITE_URL || "").replace(/\/$/, "");
-
-  let recipients = [];
-  let link = "";
-  if (comment.isOwner) {
-    // Everyone who commented as a reviewer, deduped, minus the author.
-    const seen = new Set();
-    for (const c of doc.comments) {
-      const addr = (c.authorEmail || "").trim().toLowerCase();
-      if (c.isOwner || !validEmail(addr) || seen.has(addr)) continue;
-      seen.add(addr);
-      recipients.push(addr);
-    }
-    // Reviewers can only get back in through a share link.
-    const shares = (await readShares(env, true)).shares.filter(
-      (s) => s.videoId === videoId && !s.revoked && (!s.expiresAt || Date.parse(s.expiresAt) > Date.now())
-    );
-    if (shares.length && site) link = `${site}/review.html?token=${shares[0].token}`;
-  } else {
-    if (validEmail(ownerEmail)) recipients = [ownerEmail.trim()];
-    if (site) link = `${site}/#/p/${projectId}/v/${videoId}`;
-  }
-  if (!recipients.length) return;
-
-  const who = comment.author || (comment.isOwner ? "The owner" : "A reviewer");
-  const what = comment.parentId ? "replied on" : "commented on";
-  const name = video?.name || "a video";
-  const at = timecode(comment.timeSec, video?.fps || 25);
-  const body = comment.text || "(drawing only)";
-
-  const html = `
-    <div style="font-family:system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.55;color:#16181e">
-      <p style="margin:0 0 14px"><strong>${escapeHtml(who)}</strong> ${what} <strong>${escapeHtml(name)}</strong>${
-        project?.name ? ` in ${escapeHtml(project.name)}` : ""
-      }.</p>
-      <blockquote style="margin:0 0 16px;padding:10px 14px;border-left:3px solid #6b93ff;background:#f5f7fb">
-        <div style="font:12px ui-monospace,monospace;color:#6b93ff;margin-bottom:4px">${at}</div>
-        ${escapeHtml(body).replace(/\n/g, "<br>")}
-      </blockquote>
-      ${link ? `<p style="margin:0"><a href="${escapeHtml(link)}" style="color:#3355cc">Open the review</a></p>` : ""}
-    </div>`;
-  const text = `${who} ${what} ${name}.\n\n[${at}] ${body}\n${link ? `\n${link}\n` : ""}`;
-
-  await sendEmail(env, {
-    to: recipients,
-    subject: `${who} ${comment.parentId ? "replied on" : "commented on"} ${name}`,
-    html,
-    text,
-  });
-}
-
-// Fire-and-forget: keeps the comment response fast and swallows email trouble.
-function queueNotification(ctx, env, payload) {
-  if (!canSend(env)) return;
-  const job = notifyComment(env, payload).catch((err) => console.log("notify failed:", err.message));
-  if (ctx?.waitUntil) ctx.waitUntil(job);
-}
-
-// Reviewers must never receive each other's addresses.
-const stripEmails = (comments) => comments.map(({ authorEmail, ...rest }) => rest);

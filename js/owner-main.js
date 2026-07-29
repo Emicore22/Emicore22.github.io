@@ -9,7 +9,7 @@ import { ownerStore } from "./store.js";
 import { renderProjectGrid, renderProjectDetail } from "./projects.js";
 import { mountReviewScreen } from "./review-screen.js";
 import { openShareDialog } from "./share.js";
-import { pullAdminKey, pushAdminKey, getNotifyEmail, pushNotifyEmail } from "./settings.js";
+import { pullAdminKey, pushAdminKey } from "./settings.js";
 
 const app = document.getElementById("app");
 const store = ownerStore();
@@ -36,10 +36,6 @@ function openSettings() {
     class: "input", type: "password", value: api.getAdminKey(),
     placeholder: "ADMIN_KEY from your worker setup",
   });
-  const emailInput = el("input", {
-    class: "input", type: "email", value: getNotifyEmail(),
-    placeholder: "you@studio.com", maxLength: "254",
-  });
   const save = el("button", { class: "btn btn-primary" }, "Save");
   const close = modal(el("div", {},
     el("h3", {}, "Settings"),
@@ -48,20 +44,13 @@ function openSettings() {
       "It must match the ADMIN_KEY secret you set with wrangler."),
     el("div", { class: "form-row" }, el("label", {}, "Admin key"), keyInput),
     el("p", { class: "dim hint" }, "Saved to your Dropbox, so you only enter it once — any browser you sign in with picks it up."),
-    el("div", { class: "form-row" }, el("label", {}, "Notify me at"), emailInput),
-    el("p", { class: "dim hint" }, "Emailed when a reviewer comments or replies. Leave blank for no emails."),
     el("p", { class: "dim hint" }, api.workerConfigured() ? `Worker: ${CONFIG.WORKER_URL}` : "Worker URL not set in js/config.js — share links are disabled."),
     el("div", { class: "modal-actions" }, save)
   ));
   save.addEventListener("click", async () => {
-    const email = emailInput.value.trim();
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return toast("That notification email doesn't look right.", "error");
-    }
     save.disabled = true;
     try {
       await pushAdminKey(keyInput.value.trim());
-      await pushNotifyEmail(email);
       toast("Settings saved to your Dropbox.");
       close();
     } catch (err) {

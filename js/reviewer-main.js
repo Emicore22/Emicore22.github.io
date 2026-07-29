@@ -8,7 +8,6 @@ import { reviewerStore } from "./store.js";
 import { mountReviewScreen } from "./review-screen.js";
 
 const NAME_KEY = "kf_reviewer_name";
-const EMAIL_KEY = "kf_reviewer_email";
 const app = document.getElementById("app");
 
 function fatal(title, message) {
@@ -25,39 +24,22 @@ function fatal(title, message) {
 function askName() {
   return new Promise((resolve) => {
     const input = el("input", { class: "input", placeholder: "Your name", maxLength: "60" });
-    const emailInput = el("input", { class: "input", type: "email", placeholder: "you@studio.com", maxLength: "254" });
-    const error = el("p", { class: "dim hint hidden", style: "color:var(--danger)" }, "");
     const btn = el("button", { class: "btn btn-primary" }, "Start reviewing");
     const close = modal(el("div", {},
       el("h3", {}, "Welcome"),
       el("p", { class: "dim hint" }, "Your name is shown next to your comments."),
-      el("div", { class: "form-row" }, el("label", {}, "Name"), input),
-      el("div", { class: "form-row" }, el("label", {}, "Email"), emailInput),
-      el("p", { class: "dim hint" }, "Optional — only used to email you when someone replies. Never shown to other reviewers."),
-      error,
+      el("div", { class: "form-row" }, input),
       el("div", { class: "modal-actions" }, btn)
     ), { closable: false });
-
     const done = () => {
       const name = input.value.trim();
-      if (!name) return input.focus();
-      const email = emailInput.value.trim();
-      // Empty is fine; a typo is not, or the replies would go nowhere.
-      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        error.textContent = "That email doesn't look right — fix it or leave it blank.";
-        error.classList.remove("hidden");
-        return emailInput.focus();
-      }
+      if (!name) return;
       localStorage.setItem(NAME_KEY, name);
-      if (email) localStorage.setItem(EMAIL_KEY, email);
-      else localStorage.removeItem(EMAIL_KEY);
       close();
       resolve(name);
     };
     btn.addEventListener("click", done);
-    for (const field of [input, emailInput]) {
-      field.addEventListener("keydown", (e) => e.key === "Enter" && done());
-    }
+    input.addEventListener("keydown", (e) => e.key === "Enter" && done());
     setTimeout(() => input.focus(), 50);
   });
 }
@@ -100,7 +82,6 @@ async function boot() {
     projectName: session.project.name,
     video: session.video,
     authorName: () => localStorage.getItem(NAME_KEY) || "Reviewer",
-    authorEmail: () => localStorage.getItem(EMAIL_KEY) || null,
     pollComments: true,
   });
   screen.setComments(session.comments);

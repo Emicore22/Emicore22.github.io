@@ -101,7 +101,6 @@ export function mountReviewScreen(mount, opts) {
       try {
         await store.addComment(opts.projectId, video.id, {
           author: opts.authorName(),
-          authorEmail: opts.authorEmail?.() ?? null,
           timeSec,
           text,
           annotation: shapes.length ? { shapes } : null,
@@ -120,7 +119,6 @@ export function mountReviewScreen(mount, opts) {
       try {
         await store.addComment(opts.projectId, video.id, {
           author: opts.authorName(),
-          authorEmail: opts.authorEmail?.() ?? null,
           timeSec: comments.find((c) => c.id === parentId)?.timeSec ?? 0,
           text,
           annotation: null,

@@ -54,12 +54,11 @@ export function ownerStore() {
       return (res?.data ?? emptyComments(vid)).comments;
     },
 
-    async addComment(pid, vid, { author, authorEmail = null, timeSec, text, annotation, version, parentId = null }) {
+    async addComment(pid, vid, { author, timeSec, text, annotation, version, parentId = null }) {
       const comment = {
         id: uid("c"),
         version,
         author: author || "Owner",
-        authorEmail,
         isOwner: true,
         timeSec,
         text,
@@ -138,8 +137,8 @@ export function reviewerStore(token) {
       return res.comments;
     },
 
-    async addComment(_pid, _vid, { author, authorEmail = null, timeSec, text, annotation, version, parentId = null }) {
-      const res = await api.postComment(token, { author, authorEmail, timeSec, text, annotation, version, parentId });
+    async addComment(_pid, _vid, { author, timeSec, text, annotation, version, parentId = null }) {
+      const res = await api.postComment(token, { author, timeSec, text, annotation, version, parentId });
       return res.comment;
     },
 
