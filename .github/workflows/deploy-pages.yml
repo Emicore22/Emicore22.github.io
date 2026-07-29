@@ -1,0 +1,53 @@
+# Deploys the app to Cloudflare Pages on every push.
+#
+# GitHub Pages serves this repo at its root (emicore22.github.io), which keeps
+# older share links alive. Cloudflare Pages serves the same app one level down
+# at emifls.com/kontraframe, so the layout is assembled here rather than in the
+# repo — that way neither host needs the other's shape.
+name: Deploy to Cloudflare Pages
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assemble the site
+        run: |
+          set -euo pipefail
+          mkdir -p dist/kontraframe
+          cp index.html review.html dist/kontraframe/
+          cp -R js css dist/kontraframe/
+          [ -d setup ] && cp -R setup dist/
+          # Root sends visitors to the app instead of a bare 404.
+          cat > dist/index.html <<'HTML'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <title>Kontraframe</title>
+            <meta http-equiv="refresh" content="0; url=/kontraframe/">
+            <link rel="canonical" href="/kontraframe/">
+          </head>
+          <body><p>Redirecting to <a href="/kontraframe/">/kontraframe/</a>…</p></body>
+          </html>
+          HTML
+          echo "Files to deploy:"; find dist -type f | sort
+
+      - name: Deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=kontraframe --branch=main
