@@ -147,6 +147,25 @@ async function route(request, env, ctx) {
       throw fail(400, "Unknown action");
     }
 
+    // Lets the notification address be set without the browser — the app's
+    // Settings dialog writes the same field in the same file. Deliberately
+    // never returns adminKey, only what it manages.
+    if (path === "/admin/settings" && request.method === "GET") {
+      const s = await readSettings(env);
+      return json({ notifyEmail: s.notifyEmail || "" });
+    }
+    if (path === "/admin/settings" && request.method === "POST") {
+      const body = await readBody(request);
+      const email = String(body.notifyEmail ?? "").trim();
+      if (email && !validEmail(email)) throw fail(400, "That doesn't look like an email address");
+      await mutateJson(env, "/settings.json", (doc) => ({
+        ...doc,
+        notifyEmail: email,
+        updatedAt: new Date().toISOString(),
+      }), () => ({ schema: 1, notifyEmail: email }));
+      return json({ notifyEmail: email });
+    }
+
     if (path === "/admin/shares" && request.method === "GET") {
       const doc = await readShares(env, true);
       return json({ shares: doc.shares });
@@ -470,21 +489,21 @@ function hex(bytes) {
 // commenting keeps working exactly as before. Sending is also never awaited by
 // the request — a bounced email must not fail someone's comment.
 
-let settingsCache = { data: null, fetchedAt: 0 };
-
 // The owner's notification address lives in the same settings.json the app
 // writes for the admin key, so there is no extra secret to keep in sync.
+//
+// Deliberately uncached. A per-isolate cache only invalidates in the isolate
+// that handled the write, so every other isolate keeps serving a stale address
+// — meaning a comment silently notifies nobody for minutes after a change.
+// This runs once per notification, alongside several other Dropbox reads, so
+// the extra call costs nothing worth having that bug for.
 async function readSettings(env) {
-  if (settingsCache.data && Date.now() - settingsCache.fetchedAt < 300000) return settingsCache.data;
-  let data = {};
   try {
     const res = await downloadJson(env, "/settings.json");
-    data = res?.data || {};
+    return res?.data || {};
   } catch {
-    data = {};
+    return {};
   }
-  settingsCache = { data, fetchedAt: Date.now() };
-  return data;
 }
 
 const escapeHtml = (s) =>
