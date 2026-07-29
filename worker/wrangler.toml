@@ -3,8 +3,10 @@ main = "worker.js"
 compatibility_date = "2026-07-01"
 
 [vars]
-# The GitHub Pages origin allowed to call this worker. No trailing slash.
-ALLOWED_ORIGIN = "https://emicore22.github.io"
+# Origins allowed to call this worker, comma-separated, no trailing slash.
+# Both are live: the GitHub Pages URL keeps older share links working while
+# emifls.com/kontraframe serves the app going forward.
+ALLOWED_ORIGIN = "https://emicore22.github.io,https://emifls.com,https://kontraframe.pages.dev"
 
 # Secrets are NOT set here — set them with:
 #   wrangler secret put DROPBOX_APP_KEY

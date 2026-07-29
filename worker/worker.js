@@ -49,10 +49,13 @@ function corsHeaders(request, env) {
     "Access-Control-Max-Age": "86400",
     "Vary": "Origin",
   };
-  // Only the configured origin gets CORS approval; everyone else's browser
+  // Only a configured origin gets CORS approval; everyone else's browser
   // blocks the response. (Also allow no-Origin requests, e.g. curl, which
   // CORS doesn't protect against anyway — the share token is the real gate.)
-  if (origin === env.ALLOWED_ORIGIN) headers["Access-Control-Allow-Origin"] = origin;
+  // Comma-separated so the app can live on more than one host — during a move,
+  // or to keep older share links working.
+  const allowed = String(env.ALLOWED_ORIGIN || "").split(",").map((o) => o.trim()).filter(Boolean);
+  if (allowed.includes(origin)) headers["Access-Control-Allow-Origin"] = origin;
   return headers;
 }
 

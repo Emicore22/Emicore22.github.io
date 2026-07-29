@@ -3,6 +3,10 @@
 import { el, toast, modal, fmtDate } from "./ui.js";
 import * as api from "./worker-api.js";
 
+// Resolved against the current page rather than the origin, so the app serves
+// correctly from a subdirectory (e.g. /kontraframe/) as well as a domain root.
+const reviewUrl = (token) => new URL(`review.html?token=${token}`, location.href).toString();
+
 export function openShareDialog({ projectId, video }) {
   if (!api.workerConfigured()) {
     toast("Share links need the Cloudflare Worker — see setup/SETUP.md (step 4–6).", "error");
@@ -39,7 +43,7 @@ export function openShareDialog({ projectId, video }) {
       const days = Number(expirySelect.value);
       const expiresAt = new Date(Date.now() + days * 86400 * 1000).toISOString();
       const res = await api.createShare({ projectId, videoId: video.id, label: labelInput.value.trim(), expiresAt });
-      const url = `${location.origin}/review.html?token=${res.token}`;
+      const url = reviewUrl(res.token);
       const urlInput = el("input", { class: "input share-url", value: url, readOnly: true });
       resultBox.replaceChildren(
         urlInput,
@@ -77,7 +81,7 @@ export function openShareDialog({ projectId, video }) {
           el("button", {
             class: "btn-link",
             onClick: async () => {
-              await navigator.clipboard.writeText(`${location.origin}/review.html?token=${s.token}`);
+              await navigator.clipboard.writeText(reviewUrl(s.token));
               toast("Link copied.");
             },
           }, "Copy"),
