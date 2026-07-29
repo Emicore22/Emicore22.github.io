@@ -6,6 +6,23 @@ compatibility_date = "2026-07-01"
 # The GitHub Pages origin allowed to call this worker. No trailing slash.
 ALLOWED_ORIGIN = "https://emicore22.github.io"
 
+# Where notification emails link back to. Same origin as above unless the app
+# moves; without it the emails still send, just with no link.
+SITE_URL = "https://emicore22.github.io"
+
+# Sender for notification emails, e.g. "Kontraframe <notify@emifls.com>".
+# Until this is set — and a sender exists below — notifications stay off and
+# commenting is unaffected.
+# NOTIFY_FROM = ""
+
+# Email sending, one of two ways:
+#  1. Cloudflare Email Service — no API key, but the sending domain must be on
+#     Cloudflare DNS. Uncomment once the domain is onboarded:
+# [[send_email]]
+# name = "EMAIL"
+#
+#  2. Resend — needs a verified domain and `wrangler secret put RESEND_API_KEY`.
+
 # Secrets are NOT set here — set them with:
 #   wrangler secret put DROPBOX_APP_KEY
 #   wrangler secret put DROPBOX_APP_SECRET

@@ -501,13 +501,29 @@ function timecode(seconds, fps) {
   return `${pad(Math.floor(total / 3600))}:${pad(Math.floor(total / 60) % 60)}:${pad(total % 60)}:${pad(ff)}`;
 }
 
-// Swap this one function to change provider; everything else is generic.
+// Whether any sender is wired up at all. Everything notification-related
+// checks this first so an unconfigured worker does no extra Dropbox reads.
+const canSend = (env) => !!(env.NOTIFY_FROM && (env.EMAIL || env.RESEND_API_KEY));
+
+// Two senders, one interface. The Cloudflare binding needs no API key but
+// requires the sending domain to be on Cloudflare DNS; Resend is the fallback.
+// Only this function knows the difference.
 async function sendEmail(env, { to, subject, html, text }) {
-  if (!env.RESEND_API_KEY || !env.NOTIFY_FROM) return;
+  if (!canSend(env)) return;
+  const recipients = Array.isArray(to) ? to : [to];
+
+  if (env.EMAIL) {
+    // The binding sends to one recipient per call.
+    for (const address of recipients) {
+      await env.EMAIL.send({ to: address, from: env.NOTIFY_FROM, subject, html, text });
+    }
+    return;
+  }
+
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from: env.NOTIFY_FROM, to, subject, html, text }),
+    body: JSON.stringify({ from: env.NOTIFY_FROM, to: recipients, subject, html, text }),
   });
   if (!res.ok) throw new Error(`Email send failed (${res.status}): ${(await res.text()).slice(0, 200)}`);
 }
@@ -515,7 +531,7 @@ async function sendEmail(env, { to, subject, html, text }) {
 // A reviewer's note emails the owner; the owner's note emails everyone who has
 // taken part on that video. Never the person who just wrote it.
 async function notifyComment(env, { projectId, videoId, comment }) {
-  if (!env.RESEND_API_KEY || !env.NOTIFY_FROM) return;
+  if (!canSend(env)) return;
 
   const settings = await readSettings(env);
   const ownerEmail = settings.notifyEmail || "";
@@ -575,6 +591,7 @@ async function notifyComment(env, { projectId, videoId, comment }) {
 
 // Fire-and-forget: keeps the comment response fast and swallows email trouble.
 function queueNotification(ctx, env, payload) {
+  if (!canSend(env)) return;
   const job = notifyComment(env, payload).catch((err) => console.log("notify failed:", err.message));
   if (ctx?.waitUntil) ctx.waitUntil(job);
 }
