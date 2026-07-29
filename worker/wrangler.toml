@@ -13,13 +13,13 @@ SITE_URL = "https://emicore22.github.io"
 # Sender for notification emails, e.g. "Kontraframe <notify@emifls.com>".
 # Until this is set — and a sender exists below — notifications stay off and
 # commenting is unaffected.
-# NOTIFY_FROM = ""
+NOTIFY_FROM = "Kontraframe <notify@emifls.com>"
 
 # Email sending, one of two ways:
 #  1. Cloudflare Email Service — no API key, but the sending domain must be on
 #     Cloudflare DNS. Uncomment once the domain is onboarded:
-# [[send_email]]
-# name = "EMAIL"
+[[send_email]]
+name = "EMAIL"
 #
 #  2. Resend — needs a verified domain and `wrangler secret put RESEND_API_KEY`.
 
