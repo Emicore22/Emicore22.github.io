@@ -15,13 +15,12 @@ SITE_URL = "https://emicore22.github.io"
 # commenting is unaffected.
 NOTIFY_FROM = "Kontraframe <notify@emifls.com>"
 
-# Email sending, one of two ways:
-#  1. Cloudflare Email Service — no API key, but the sending domain must be on
-#     Cloudflare DNS. Uncomment once the domain is onboarded:
-[[send_email]]
-name = "EMAIL"
-#
-#  2. Resend — needs a verified domain and `wrangler secret put RESEND_API_KEY`.
+# Email sending goes through Resend: `wrangler secret put RESEND_API_KEY`.
+# Cloudflare Email Service was the alternative, but its sending side needs a
+# dashboard onboarding step that wasn't available here. To switch back, add:
+#   [[send_email]]
+#   name = "EMAIL"
+# and sendEmail() in worker.js prefers the binding automatically.
 
 # Secrets are NOT set here — set them with:
 #   wrangler secret put DROPBOX_APP_KEY
