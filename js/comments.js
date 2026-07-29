@@ -3,6 +3,7 @@
 
 import { el, fmtDate } from "./ui.js";
 import { secondsToTimecode } from "./timecode.js";
+import { authorInitials } from "./authors.js";
 
 export class CommentsPanel {
   constructor(mount, opts) {
@@ -170,6 +171,14 @@ export class CommentsPanel {
     );
   }
 
+  // Colour-coded initials, matching this author's ticks on the timeline.
+  _avatar(name) {
+    const color = this.opts.colorFor?.(name) || "var(--text-dim)";
+    return el("span", {
+      class: "avatar", style: `--avatar: ${color}`, title: name, "aria-hidden": "true",
+    }, authorInitials(name));
+  }
+
   _renderThread(c, thread, fps) {
     // Resolved state reads as a property of the note, so it sits in the header
     // rather than down among the actions. No label: it is the only checkbox on
@@ -203,6 +212,7 @@ export class CommentsPanel {
       "div",
       { class: `comment${c.resolved ? " resolved" : ""}${c.id === this.selectedId ? " selected" : ""}` },
       el("div", { class: "comment-meta" },
+        this._avatar(c.author),
         el("span", { class: "comment-author" }, c.author + (c.isOwner ? " ★" : "")),
         el("span", { class: "badge" }, `v${c.version}`),
         el("span", { class: "dim comment-date" }, fmtDate(c.createdAt)),
@@ -233,7 +243,7 @@ export class CommentsPanel {
           e.stopPropagation();
           this._toggleReplyBox(item, c);
         },
-      }, thread.length ? `Reply (${thread.length})` : "Reply")
+      }, "Reply")
     );
 
     if (this.opts.mode === "owner") {
@@ -258,6 +268,7 @@ export class CommentsPanel {
   _renderReply(r) {
     const reply = el("div", { class: "comment-reply" },
       el("div", { class: "comment-meta" },
+        this._avatar(r.author),
         el("span", { class: "comment-author" }, r.author + (r.isOwner ? " ★" : "")),
         el("span", { class: "dim comment-date" }, fmtDate(r.createdAt))
       ),
@@ -323,6 +334,14 @@ export class CommentsPanel {
 
     item.append(box);
     input.focus();
+  }
+
+  // Public entry point for selecting a note from outside the panel — used by
+  // the timeline markers, which need the same seek-and-highlight behaviour as
+  // clicking the note itself.
+  select(c) {
+    this._select(c);
+    this.listEl.querySelector(".comment.selected")?.scrollIntoView({ block: "nearest" });
   }
 
   _select(c) {

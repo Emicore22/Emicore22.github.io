@@ -7,6 +7,7 @@ import { Player } from "./player.js";
 import { Annotator, ANNOT_COLORS } from "./annotations.js";
 import { CommentsPanel } from "./comments.js";
 import { versionSwitcher, statusPill } from "./versions.js";
+import { buildAuthorColors, colorResolver } from "./authors.js";
 
 export function mountReviewScreen(mount, opts) {
   // opts: {
@@ -23,6 +24,10 @@ export function mountReviewScreen(mount, opts) {
   let shownVersion = video.currentVersion;
   let comments = [];
   let statusEl;
+  // One colour per author, deconflicted across everyone on this video, so the
+  // sidebar avatars and the timeline ticks always agree.
+  let authorColors = new Map();
+  const colorFor = (name) => colorResolver(authorColors)(name);
 
   // ── layout ──────────────────────────────────────────────────────────────
   const playerMount = el("div", { class: "player-area" });
@@ -89,6 +94,7 @@ export function mountReviewScreen(mount, opts) {
   // ── comments panel ──────────────────────────────────────────────────────
   const panel = new CommentsPanel(stage, {
     mode,
+    colorFor,
     fps: () => player.fps,
     currentTime: () => player.currentTime,
     onSeek: (c) => {
@@ -242,6 +248,7 @@ export function mountReviewScreen(mount, opts) {
       const media = await mediaForVersion(n);
       shownVersion = n;
       player.load(media, () => mediaForVersion(shownVersion));
+      syncMarkers();
     } catch (err) {
       toast(`Could not load v${n}: ${err.message}`, "error");
     }
@@ -251,9 +258,31 @@ export function mountReviewScreen(mount, opts) {
     try {
       comments = await store.loadComments(opts.projectId, video.id);
       panel.setComments(comments);
+      syncMarkers();
     } catch (err) {
       toast(`Could not load comments: ${err.message}`, "error");
     }
+  }
+
+  // Ticks on the scrubber, one per note, in that author's colour. Replies are
+  // skipped: they sit at their parent's timecode, so they would stack up as
+  // duplicate ticks on the same spot. Only the version on screen is shown —
+  // another cut's timecodes do not describe this one.
+  function syncMarkers() {
+    // Rebuilt from the current roster, in first-comment order.
+    authorColors = buildAuthorColors(
+      comments.slice().sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map((c) => c.author)
+    );
+    player.setMarkers(
+      comments
+        .filter((c) => !c.parentId && c.version === shownVersion)
+        .map((c) => ({
+          timeSec: c.timeSec,
+          color: colorFor(c.author),
+          label: `${c.author}: ${(c.text || "drawing").slice(0, 60)}`,
+          onSelect: () => panel.select(c),
+        }))
+    );
   }
 
   // ── keyboard: C = comment, Esc = cancel drawing ─────────────────────────
@@ -293,6 +322,7 @@ export function mountReviewScreen(mount, opts) {
     setComments(list) {
       comments = list;
       panel.setComments(list);
+      syncMarkers();
     },
   };
 }

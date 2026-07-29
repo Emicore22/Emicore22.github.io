@@ -42,6 +42,11 @@ export class Player {
     this.scrub = el("input", {
       class: "scrub", type: "range", min: "0", max: "1000", step: "1", value: "0",
     });
+    // Comment ticks live on their own rail above the track rather than on top
+    // of it, so they never intercept a drag on the scrubber.
+    this.markerRail = el("div", { class: "scrub-markers" });
+    this.scrubWrap = el("div", { class: "scrub-wrap" }, this.markerRail, this.scrub);
+    this.markers = [];
     this.muteBtn = el("button", { class: "ctrl-btn", title: "Mute" }, icon("volume"));
 
     const stepBackBtn = el("button", { class: "ctrl-btn", title: "Previous frame (←)" }, icon("stepBack"));
@@ -52,7 +57,7 @@ export class Player {
       "div", { class: "player-controls" },
       this.playBtn, stepBackBtn, stepFwdBtn,
       el("div", { class: "tc-group" }, this.timecodeEl, el("span", { class: "dim" }, " / "), this.durationEl),
-      this.scrub,
+      this.scrubWrap,
       this.muteBtn, fullBtn
     );
 
@@ -76,6 +81,9 @@ export class Player {
     this.video.addEventListener("timeupdate", () => this._syncUi());
     this.video.addEventListener("durationchange", () => {
       this.durationEl.textContent = secondsToTimecode(this.video.duration || 0, this.fps);
+      // Marker positions are a percentage of the duration, which is unknown
+      // until metadata arrives — so place them again once it does.
+      this._drawMarkers();
     });
     this.video.addEventListener("play", () => {
       this.playBtn.replaceChildren(icon("pause"));
@@ -123,6 +131,39 @@ export class Player {
     this.fps = fps;
     this._syncUi();
     this.durationEl.textContent = secondsToTimecode(this.video.duration || 0, this.fps);
+  }
+
+  // markers: [{timeSec, color, label, onSelect}] — redrawn whenever the
+  // comments change, and again on durationchange since positions are a
+  // percentage of a duration that isn't known until metadata loads.
+  setMarkers(markers) {
+    this.markers = markers || [];
+    this._drawMarkers();
+  }
+
+  _drawMarkers() {
+    const duration = this.video.duration;
+    if (!duration || !Number.isFinite(duration)) {
+      this.markerRail.replaceChildren();
+      return;
+    }
+    this.markerRail.replaceChildren(
+      ...this.markers.map((m) => {
+        const pct = Math.min(100, Math.max(0, (m.timeSec / duration) * 100));
+        const tick = el("button", {
+          class: "scrub-marker",
+          style: `left:${pct}%; --marker: ${m.color}`,
+          title: m.label || secondsToTimecode(m.timeSec, this.fps),
+          "aria-label": m.label || `Comment at ${secondsToTimecode(m.timeSec, this.fps)}`,
+        });
+        tick.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (m.onSelect) m.onSelect();
+          else this.seekTo(m.timeSec);
+        });
+        return tick;
+      })
+    );
   }
 
   get currentTime() {
