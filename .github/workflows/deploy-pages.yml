@@ -43,6 +43,15 @@ jobs:
           <body><p>Redirecting to <a href="/kontraframe/">/kontraframe/</a>…</p></body>
           </html>
           HTML
+          # Pages defaults to 4h of browser caching. These ES modules carry no
+          # version in their filenames, so a returning visitor could end up
+          # running a mix of cached old and freshly deployed modules — which
+          # breaks in stranger ways than either alone. no-cache still lets the
+          # browser revalidate cheaply and get a 304 when nothing changed.
+          cat > dist/_headers <<'HEADERS'
+          /*
+            Cache-Control: no-cache
+          HEADERS
           echo "Files to deploy:"; find dist -type f | sort
 
       - name: Deploy
