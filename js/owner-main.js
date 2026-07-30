@@ -104,7 +104,7 @@ async function route() {
         projectId,
         projectName: project.name,
         video,
-        authorName: () => "Owner",
+        authorName: () => "Emi",
         pollComments: api.adminConfigured(),
         headerExtras: [
           el("button", { class: "btn-link", onClick: () => (location.hash = `#/p/${projectId}`) }, "← Back"),
