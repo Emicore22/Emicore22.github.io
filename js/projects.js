@@ -6,7 +6,7 @@ import { getAccessToken } from "./auth.js";
 import * as dbx from "./dropbox.js";
 import { createProject, deleteProject, deleteVideo, newVideoEntry, mediaDir } from "./store.js";
 import { detectFps } from "./fps.js";
-import { STATUSES } from "./versions.js";
+import { statusPill } from "./versions.js";
 import { hashString } from "./authors.js";
 import { CONFIG } from "./config.js";
 
@@ -160,7 +160,6 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
   async function draw() {
     const project = await store.loadProject(projectId);
     const cards = project.videos.map((v) => {
-      const status = STATUSES[v.status] || STATUSES.in_review;
       const open = () => onOpenVideo(project.id, v.id);
       const latest = v.versions.at(-1);
       return el("div", {
@@ -168,11 +167,15 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
           "aria-label": `Open ${v.name}`,
           onClick: open,
           onKeydown: (e) => {
+            // Only when the card itself has focus. The status menu and the
+            // buttons inside it answer to Enter and Space too, and their
+            // keypresses bubble through here on the way up.
+            if (e.target !== e.currentTarget) return;
             if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
           },
         },
         el("div", { class: "video-poster", style: posterStyle(v.name) },
-          el("span", { class: `status-pill ${status.cls}` }, status.label),
+          videoStatusPill(v),
           el("button", {
             class: "btn-link danger card-delete",
             title: `Delete “${v.name}”`,
@@ -213,6 +216,39 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
     );
     wireDropZone(page, project);
     mount.replaceChildren(page);
+  }
+
+  // A menu, not a label — the same pill the review screen uses. Approving a cut
+  // is the one thing you want to do from here without opening the video first.
+  function videoStatusPill(video) {
+    // Guards against a slow save from an earlier pick reverting a later one.
+    let seq = 0;
+    const pill = statusPill(video.status, {
+      editable: true,
+      onChange: async (status) => {
+        const previous = video.status;
+        if (status === previous) return;
+        // The pill has already recoloured itself; treat the change as applied
+        // and only undo it if the write is refused.
+        const mine = ++seq;
+        video.status = status;
+        try {
+          await store.updateProject(projectId, (p) => {
+            const target = p.videos.find((x) => x.id === video.id);
+            if (target) target.status = status;
+            return p;
+          });
+        } catch (err) {
+          if (mine !== seq) return; // a newer pick owns the state now
+          video.status = previous;
+          toast(`Could not change status: ${err.message}`, "error");
+          draw();
+        }
+      },
+    });
+    // Opening the menu is not a request to open the video behind it.
+    pill.addEventListener("click", (e) => e.stopPropagation());
+    return pill;
   }
 
   async function askDeleteVideo(project, video) {
