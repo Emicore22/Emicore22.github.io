@@ -120,6 +120,77 @@ export function confirmDialog({ title, body = [], confirmLabel = "Delete", requi
   });
 }
 
+// A menu pinned to a point on screen — the card's right-click menu, and the
+// same menu opened from a button so it is not the only way to find it.
+// `items` takes {label, danger?, onSelect}; falsy entries are skipped.
+let openMenu = null;
+
+export function closeContextMenu() {
+  if (!openMenu) return;
+  const { node, teardown } = openMenu;
+  openMenu = null;          // cleared first: teardown must not re-enter here
+  teardown();
+  node.remove();
+}
+
+export function contextMenu(x, y, items) {
+  closeContextMenu();
+
+  const menu = el("div", { class: "context-menu", role: "menu" },
+    ...items.filter(Boolean).map((item) =>
+      el("button", {
+          class: `context-menu-item${item.danger ? " danger" : ""}`,
+          role: "menuitem", type: "button",
+          onClick: () => { closeContextMenu(); item.onSelect(); },
+        }, item.label)
+    )
+  );
+  document.body.append(menu);
+
+  // Positioned after mounting, because keeping it on screen means measuring it.
+  const pad = 8;
+  const { width, height } = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(pad, Math.min(x, window.innerWidth - width - pad))}px`;
+  menu.style.top = `${Math.max(pad, Math.min(y, window.innerHeight - height - pad))}px`;
+
+  const onPointerDown = (e) => { if (!menu.contains(e.target)) closeContextMenu(); };
+  const onKey = (e) => {
+    if (e.key === "Escape") {
+      // Swallowed, or an open dialog behind the menu would close along with it.
+      e.stopPropagation();
+      closeContextMenu();
+      return;
+    }
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    e.preventDefault();
+    const entries = [...menu.querySelectorAll(".context-menu-item")];
+    const from = entries.indexOf(document.activeElement);
+    const step = e.key === "ArrowDown" ? 1 : -1;
+    entries[(from + step + entries.length) % entries.length]?.focus();
+  };
+  // The menu is pinned to the viewport, so anything that moves the card out
+  // from under it leaves it pointing at nothing.
+  const onReflow = () => closeContextMenu();
+
+  document.addEventListener("pointerdown", onPointerDown, true);
+  document.addEventListener("keydown", onKey, true);
+  window.addEventListener("scroll", onReflow, true);
+  window.addEventListener("resize", onReflow);
+
+  openMenu = {
+    node: menu,
+    teardown() {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("scroll", onReflow, true);
+      window.removeEventListener("resize", onReflow);
+    },
+  };
+
+  menu.querySelector(".context-menu-item")?.focus();
+  return closeContextMenu;
+}
+
 export function fmtDate(iso) {
   if (!iso) return "";
   const d = new Date(iso);

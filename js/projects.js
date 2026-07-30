@@ -1,7 +1,7 @@
 // Owner project browser: project grid, project detail (video rows),
 // in-app upload (≤800 MB) and "Rescan" for files dropped into Dropbox.
 
-import { el, toast, modal, confirmDialog, fmtDate, spinner } from "./ui.js";
+import { el, toast, modal, confirmDialog, contextMenu, fmtDate, spinner } from "./ui.js";
 import { getAccessToken } from "./auth.js";
 import * as dbx from "./dropbox.js";
 import { createProject, deleteProject, deleteVideo, newVideoEntry, mediaDir } from "./store.js";
@@ -166,6 +166,10 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
           class: "video-card", role: "button", tabindex: "0",
           "aria-label": `Open ${v.name}`,
           onClick: open,
+          onContextmenu: (e) => {
+            e.preventDefault();
+            openCardMenu(project, v, e.clientX, e.clientY);
+          },
           onKeydown: (e) => {
             // Only when the card itself has focus. The status menu and the
             // buttons inside it answer to Enter and Space too, and their
@@ -176,12 +180,6 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
         },
         el("div", { class: "video-poster", style: posterStyle(v.name) },
           videoStatusPill(v),
-          el("button", {
-            class: "btn-link danger card-delete",
-            title: `Delete “${v.name}”`,
-            "aria-label": `Delete video ${v.name}`,
-            onClick: (e) => { e.stopPropagation(); askDeleteVideo(project, v); },
-          }, "Delete"),
           el("div", { class: "video-poster-label" },
             el("h3", {}, v.name),
             el("p", {}, v.versions.length ? `v${v.currentVersion} · ${v.fps} fps` : "No media yet")
@@ -193,7 +191,20 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
           el("button", {
             class: "btn-link",
             onClick: (e) => { e.stopPropagation(); addVideoDialog(project, v); },
-          }, "+ version")
+          }, "+ version"),
+          // Right-click is the natural gesture here, but it is invisible — this
+          // gives the same menu something you can see.
+          el("button", {
+            class: "btn-link card-menu-btn",
+            title: "More actions",
+            "aria-label": `More actions for ${v.name}`,
+            "aria-haspopup": "menu",
+            onClick: (e) => {
+              e.stopPropagation();
+              const r = e.currentTarget.getBoundingClientRect();
+              openCardMenu(project, v, r.left, r.bottom + 4);
+            },
+          }, "•••")
         )
       );
     });
@@ -249,6 +260,51 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
     // Opening the menu is not a request to open the video behind it.
     pill.addEventListener("click", (e) => e.stopPropagation());
     return pill;
+  }
+
+  function openCardMenu(project, video, x, y) {
+    contextMenu(x, y, [
+      { label: "Rename…", onSelect: () => renameVideoDialog(video) },
+      { label: "Delete", danger: true, onSelect: () => askDeleteVideo(project, video) },
+    ]);
+  }
+
+  function renameVideoDialog(video) {
+    const input = el("input", { class: "input", value: video.name });
+    const save = el("button", { class: "btn btn-primary" }, "Rename");
+    const close = modal(el("div", {},
+      el("h3", {}, "Rename video"),
+      // Worth saying plainly: the uploaded file keeps its own name, and so do
+      // the share links pointing at it. Only the label in here changes.
+      el("p", { class: "dim hint" },
+        "Changes the name shown in Kontraframe. The uploaded file in Dropbox keeps the name it was uploaded with."),
+      el("div", { class: "form-row" }, input),
+      el("div", { class: "modal-actions" }, save)
+    ));
+
+    async function submit() {
+      const name = input.value.trim();
+      if (!name || name === video.name) return close();
+      save.disabled = true;
+      try {
+        await store.updateProject(projectId, (p) => {
+          const target = p.videos.find((x) => x.id === video.id);
+          if (target) target.name = name;
+          return p;
+        });
+        close();
+        toast(`Renamed to “${name}”.`);
+        draw();
+      } catch (err) {
+        toast(`Could not rename: ${err.message}`, "error");
+        save.disabled = false;
+      }
+    }
+
+    save.addEventListener("click", submit);
+    input.addEventListener("keydown", (e) => e.key === "Enter" && submit());
+    input.focus();
+    input.select();
   }
 
   async function askDeleteVideo(project, video) {
