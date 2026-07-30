@@ -300,16 +300,59 @@ main#main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .project-card-new:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 .project-card-new .plus { font-size: 22px; line-height: 1; font-weight: 300; }
 
-/* ── video rows ── */
-.video-list { display: flex; flex-direction: column; gap: 6px; }
-.video-row {
-  display: flex; align-items: center; gap: 12px; cursor: pointer;
+/* ── video cards ── */
+.video-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px; }
+.video-card {
+  position: relative; cursor: pointer; color: var(--text);
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--r); padding: 13px 16px;
-  transition: border-color var(--fast) var(--ease), background var(--fast) var(--ease);
+  border-radius: var(--r-lg); overflow: hidden;
+  display: flex; flex-direction: column;
+  transition: border-color var(--med) var(--ease), transform var(--med) var(--ease),
+              box-shadow var(--med) var(--ease);
 }
-.video-row:hover { border-color: var(--border-strong); background: var(--surface-2); }
-.video-row-name { font-weight: 550; letter-spacing: -0.01em; }
+.video-card:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-2px); box-shadow: var(--shadow-md);
+}
+
+/* Cover art. The three stops come from the card's inline style — a blob of the
+   lighter colour off the top-right over a diagonal base, which is what gives
+   these their depth instead of reading as a flat swatch. */
+.video-poster {
+  position: relative; aspect-ratio: 16 / 9; padding: 12px;
+  display: flex; flex-direction: column; justify-content: flex-end;
+  background:
+    radial-gradient(115% 90% at 78% 16%, var(--g2), transparent 62%),
+    linear-gradient(155deg, var(--g1), var(--g3));
+}
+/* The status colours are soft translucent fills built for a dark panel, and
+   would all but vanish on a bright gradient — so on the poster the pill keeps
+   its text colour but sits on a scrim of its own. */
+.video-poster .status-pill {
+  position: absolute; top: 10px; left: 10px;
+  background-color: rgba(9, 11, 16, 0.6); border-color: rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(4px);
+}
+.video-poster-label { min-width: 0; }
+.video-poster-label h3 {
+  margin: 0; font-size: 14.5px; letter-spacing: -0.01em; color: #fff;
+  overflow-wrap: anywhere; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+.video-poster-label p {
+  margin: 2px 0 0; font-size: 12px; color: rgba(255, 255, 255, 0.82);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.video-card-foot {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 8px 7px 12px; font-size: 12px;
+  border-top: 1px solid var(--border);
+}
+.video-card .card-delete {
+  background: rgba(9, 11, 16, 0.6); backdrop-filter: blur(4px);
+  border-radius: var(--r-pill); padding: 3px 9px; font-size: 12px;
+}
+.video-card:hover .card-delete { opacity: 1; }
 
 .badge {
   background: var(--surface-2); border: 1px solid var(--border);

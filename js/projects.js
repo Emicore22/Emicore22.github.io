@@ -7,12 +7,31 @@ import * as dbx from "./dropbox.js";
 import { createProject, deleteProject, deleteVideo, newVideoEntry, mediaDir } from "./store.js";
 import { detectFps } from "./fps.js";
 import { STATUSES } from "./versions.js";
+import { hashString } from "./authors.js";
 import { CONFIG } from "./config.js";
 
 const MAX_INAPP_UPLOAD = 800 * 1024 * 1024;
 const MAX_LABEL = `${Math.round(MAX_INAPP_UPLOAD / (1024 * 1024))} MB`;
 const OVER_LIMIT_MSG = `Over ${MAX_LABEL} — drop the file into the project's media folder in Dropbox, then Rescan.`;
 const VIDEO_FILE = /(^video\/(mp4|webm|quicktime)$)|(\.(mp4|webm|mov)$)/i;
+
+// Cover art for a video card. There is no thumbnail to show — nobody has made
+// one, and the file itself lives behind a temporary link — but the video does
+// have a name, so the name picks the gradient. Same name, same colours, every
+// time the page is drawn, which is what makes a card recognisable at a glance.
+const POSTERS = [
+  ["#6d4aff", "#a78bfa", "#3b1e8f"], // violet
+  ["#ff7a59", "#ffb37a", "#d94a7a"], // coral
+  ["#22d3ee", "#7dd3fc", "#2563eb"], // cyan
+  ["#e352c8", "#f9a8d4", "#7c2d8f"], // magenta
+  ["#5b8cff", "#93c5fd", "#3730a3"], // indigo
+  ["#a855f7", "#f0abfc", "#6d28d9"], // orchid
+];
+
+function posterStyle(name) {
+  const [g1, g2, g3] = POSTERS[hashString(name) % POSTERS.length];
+  return `--g1:${g1}; --g2:${g2}; --g3:${g3}`;
+}
 
 // Without this, a file dropped outside the drop zone makes the browser
 // navigate away from the app to the file itself.
@@ -140,24 +159,39 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
 
   async function draw() {
     const project = await store.loadProject(projectId);
-    const rows = project.videos.map((v) => {
+    const cards = project.videos.map((v) => {
       const status = STATUSES[v.status] || STATUSES.in_review;
-      return el("div", { class: "video-row", role: "button", tabindex: "0", onClick: () => onOpenVideo(project.id, v.id) },
-        el("span", { class: "video-row-name" }, v.name),
-        el("span", { class: "badge" }, v.versions.length ? `v${v.currentVersion}` : "no media"),
-        el("span", { class: `status-pill ${status.cls}` }, status.label),
-        el("span", { class: "dim" }, `${v.fps} fps`),
-        el("span", { class: "spacer" }),
-        el("button", {
-          class: "btn btn-sm",
-          onClick: (e) => { e.stopPropagation(); addVideoDialog(project, v); },
-        }, "+ version"),
-        el("button", {
-          class: "btn-link danger",
-          title: `Delete “${v.name}”`,
-          "aria-label": `Delete video ${v.name}`,
-          onClick: (e) => { e.stopPropagation(); askDeleteVideo(project, v); },
-        }, "Delete")
+      const open = () => onOpenVideo(project.id, v.id);
+      const latest = v.versions.at(-1);
+      return el("div", {
+          class: "video-card", role: "button", tabindex: "0",
+          "aria-label": `Open ${v.name}`,
+          onClick: open,
+          onKeydown: (e) => {
+            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
+          },
+        },
+        el("div", { class: "video-poster", style: posterStyle(v.name) },
+          el("span", { class: `status-pill ${status.cls}` }, status.label),
+          el("button", {
+            class: "btn-link danger card-delete",
+            title: `Delete “${v.name}”`,
+            "aria-label": `Delete video ${v.name}`,
+            onClick: (e) => { e.stopPropagation(); askDeleteVideo(project, v); },
+          }, "Delete"),
+          el("div", { class: "video-poster-label" },
+            el("h3", {}, v.name),
+            el("p", {}, v.versions.length ? `v${v.currentVersion} · ${v.fps} fps` : "No media yet")
+          )
+        ),
+        el("div", { class: "video-card-foot" },
+          el("span", { class: "dim" }, latest ? `Updated ${fmtDate(latest.uploadedAt)}` : "Not uploaded"),
+          el("span", { class: "spacer" }),
+          el("button", {
+            class: "btn-link",
+            onClick: (e) => { e.stopPropagation(); addVideoDialog(project, v); },
+          }, "+ version")
+        )
       );
     });
 
@@ -170,8 +204,8 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
         el("button", { class: "btn", onClick: () => rescan(project) }, "Rescan folder"),
         el("button", { class: "btn btn-primary", onClick: () => addVideoDialog(project) }, "+ Add video")
       ),
-      rows.length
-        ? el("div", { class: "video-list" }, ...rows)
+      cards.length
+        ? el("div", { class: "video-grid" }, ...cards)
         : el("p", { class: "dim empty-note" },
             `No videos yet. Add one below ${MAX_LABEL} here (or drag & drop it onto this page), or drop bigger files into `,
             el("code", {}, `Dropbox/Apps/…/projects/${project.id}/media/`),

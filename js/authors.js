@@ -18,6 +18,12 @@ const PALETTE = [
 ];
 
 // FNV-1a: small, stable, and spreads short names better than summing codes.
+// Exported because the video cards pick their cover art the same way — from a
+// name, and needing the same name to keep giving the same answer.
+export function hashString(str) {
+  return hash(str);
+}
+
 function hash(str) {
   let h = 0x811c9dc5;
   for (let i = 0; i < str.length; i++) {
