@@ -321,19 +321,38 @@ main#main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .video-poster {
   position: relative; aspect-ratio: 16 / 9; padding: 12px;
   display: flex; flex-direction: column; justify-content: flex-end;
+  overflow: hidden;
   background:
     radial-gradient(115% 90% at 78% 16%, var(--g2), transparent 62%),
     linear-gradient(155deg, var(--g1), var(--g3));
+}
+/* A frame from the cut itself, over the gradient rather than instead of it —
+   the gradient is the loading state and the fallback. Faded in only once a
+   frame has been decoded, so a card never flashes an empty black box. */
+.video-preview {
+  position: absolute; inset: 0; z-index: 0;
+  width: 100%; height: 100%; object-fit: cover;
+  opacity: 0; pointer-events: none; background: #000;
+  transition: opacity var(--med) var(--ease);
+}
+.video-preview.ready { opacity: 1; }
+/* The name has to stay readable over whatever frame turns up under it, and a
+   text-shadow alone loses against a bright one. */
+.video-poster::after {
+  content: ""; position: absolute; inset: auto 0 0 0; height: 62%; z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.6), transparent);
 }
 /* The status colours are soft translucent fills built for a dark panel, and
    would all but vanish on a bright gradient — so on the poster the pill keeps
    its text colour but sits on a scrim of its own. */
 .video-poster .status-pill {
-  position: absolute; top: 10px; left: 10px;
+  position: absolute; top: 10px; left: 10px; z-index: 2;
   background-color: rgba(9, 11, 16, 0.6); border-color: rgba(255, 255, 255, 0.16);
   backdrop-filter: blur(4px);
 }
-.video-poster-label { min-width: 0; }
+/* Above both the frame and the scrim over it. */
+.video-poster-label { position: relative; z-index: 2; min-width: 0; }
 .video-poster-label h3 {
   margin: 0; font-size: 14.5px; letter-spacing: -0.01em; color: #fff;
   overflow-wrap: anywhere; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);

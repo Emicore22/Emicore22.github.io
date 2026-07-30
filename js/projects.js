@@ -33,6 +33,10 @@ function posterStyle(name) {
   return `--g1:${g1}; --g2:${g2}; --g3:${g3}`;
 }
 
+// A frame a little way into the cut, rather than the very first one — the
+// first frame of an edit is black more often than not.
+const POSTER_AT = (duration) => Math.min(1, (duration || 0) * 0.1) || 0;
+
 // Three dots, drawn rather than typed. The bullet character renders at very
 // different weights from font to font, and this one has to sit quietly in a
 // footer next to 12px text.
@@ -245,12 +249,89 @@ function newProjectDialog(store, onOpen) {
 export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBack }) {
   mount.replaceChildren(spinner("Loading project…"));
 
+  // Cover previews are fetched only for cards that reach the viewport: each one
+  // costs a temporary-link call and then however much of the file the browser
+  // needs to decode a frame, and a project can hold a lot of videos.
+  const previewLoaders = new WeakMap();
+  let previewObserver = null;
+
+  // A redraw throws the old cards away, but a detached <video> can go on
+  // pulling bytes down until it is collected. Cut them loose first.
+  function releasePreviews() {
+    for (const preview of mount.querySelectorAll(".video-preview")) {
+      preview.pause?.();
+      preview.removeAttribute("src");
+      preview.load?.();
+    }
+  }
+
+  function watchPreviews() {
+    previewObserver?.disconnect();
+    previewObserver = new IntersectionObserver((entries, obs) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        obs.unobserve(entry.target);          // one load per card, ever
+        previewLoaders.get(entry.target)?.();
+      }
+    }, { rootMargin: "250px" });
+    return previewObserver;
+  }
+
+  // The gradient stays underneath. It is what shows while the frame is on its
+  // way, and what stays if Dropbox declines the link or the browser cannot
+  // decode the file — ProRes and HEVC never will, and this app is used with
+  // exports straight out of an NLE.
+  function attachPreview(card, poster, video) {
+    const source = video.versions.at(-1);
+    if (!source) return;
+
+    const preview = el("video", {
+      class: "video-preview",
+      muted: true, loop: true, playsInline: true, preload: "metadata",
+      tabindex: "-1", "aria-hidden": "true",
+    });
+    poster.prepend(preview);
+
+    let posterTime = 0;
+    preview.addEventListener("loadedmetadata", () => {
+      posterTime = POSTER_AT(preview.duration);
+      preview.currentTime = posterTime;
+    });
+    // Shown only once a frame is actually on screen, so the card never flashes
+    // an empty black box over its gradient.
+    preview.addEventListener("seeked", () => preview.classList.add("ready"), { once: true });
+
+    previewLoaders.set(card, async () => {
+      try {
+        const { url } = await store.mediaLink(source.path);
+        if (card.isConnected) preview.src = url;
+      } catch {
+        // No link, no preview — the gradient is already doing the job.
+      }
+    });
+
+    // A preview that plays on hover is motion the reader did not ask for.
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    card.addEventListener("pointerenter", () => { preview.play?.().catch(() => {}); });
+    card.addEventListener("pointerleave", () => {
+      preview.pause?.();
+      if (preview.readyState) preview.currentTime = posterTime;
+    });
+  }
+
   async function draw() {
     const project = await store.loadProject(projectId);
     const cards = project.videos.map((v) => {
       const open = () => onOpenVideo(project.id, v.id);
       const latest = v.versions.at(-1);
-      return el("div", {
+      const poster = el("div", { class: "video-poster", style: posterStyle(v.name) },
+        videoStatusPill(v),
+        el("div", { class: "video-poster-label" },
+          el("h3", {}, v.name),
+          el("p", {}, v.versions.length ? `v${v.currentVersion} · ${v.fps} fps` : "No media yet")
+        )
+      );
+      const card = el("div", {
           class: "video-card", role: "button", tabindex: "0",
           "aria-label": `Open ${v.name}`,
           onClick: open,
@@ -266,13 +347,7 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
             if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
           },
         },
-        el("div", { class: "video-poster", style: posterStyle(v.name) },
-          videoStatusPill(v),
-          el("div", { class: "video-poster-label" },
-            el("h3", {}, v.name),
-            el("p", {}, v.versions.length ? `v${v.currentVersion} · ${v.fps} fps` : "No media yet")
-          )
-        ),
+        poster,
         el("div", { class: "video-card-foot" },
           el("span", { class: "dim" }, latest ? `Updated ${fmtDate(latest.uploadedAt)}` : "Not uploaded"),
           el("span", { class: "spacer" }),
@@ -292,6 +367,8 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
           }, moreIcon())
         )
       );
+      attachPreview(card, poster, v);
+      return card;
     });
 
     const page = el("div", { class: "page drop-target" },
@@ -311,7 +388,13 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
             " and hit Rescan.")
     );
     wireDropZone(page, project);
+    releasePreviews();
     mount.replaceChildren(page);
+
+    // Only once the cards are in the document — an element that is not laid out
+    // yet never intersects anything, so observing earlier would load nothing.
+    const observer = watchPreviews();
+    for (const card of cards) observer.observe(card);
   }
 
   // A menu, not a label — the same pill the review screen uses. Approving a cut
