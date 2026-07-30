@@ -396,6 +396,49 @@ button.status-pill:not(:disabled) { cursor: pointer; }
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='6' viewBox='0 0 9 6'%3E%3Cpath d='M1 1l3.5 3.5L8 1' fill='none' stroke='%233ecf8e' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
+/* ── the list a select drops down ──
+   Everything above styles the closed select; the list it opens was drawn by
+   the OS — a black panel with the system accent on the highlighted row and
+   the system font. It was the one corner of the app the theme could not
+   reach. base-select hands that list back to CSS.
+
+   All of it is progressive enhancement: where base-select is missing the
+   select keeps its own chevron and its native list, exactly as before. Which
+   is also why the rules sit here, after those the closed pill depends on. */
+@supports (appearance: base-select) {
+  .select, .status-select { appearance: base-select; }
+
+  /* Both selects already draw a chevron as a background image — the status one
+     in the pill's own colour — so the icon base-select adds would be a second. */
+  .select::picker-icon, .status-select::picker-icon { display: none; }
+
+  .select::picker(select), .status-select::picker(select) {
+    appearance: base-select;
+    margin-top: 5px; padding: 5px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-strong); border-radius: var(--r);
+    box-shadow: var(--shadow-md);
+  }
+
+  .select option, .status-select option {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 10px; border-radius: var(--r-sm);
+    font: inherit; font-size: 13px; font-weight: 500; letter-spacing: normal;
+    color: var(--text); background: transparent; cursor: pointer;
+    transition: background var(--fast) var(--ease);
+  }
+  .select option:hover, .status-select option:hover,
+  .select option:focus, .status-select option:focus {
+    background: var(--surface-3);
+  }
+  /* The tick marks the current choice, so it goes to the trailing edge and the
+     row keeps its own colour — a status must not be recoloured to say "this
+     one is selected" when its colour is the thing it is saying. */
+  .select option::checkmark, .status-select option::checkmark {
+    order: 1; margin-left: auto; font-size: 11px; color: var(--accent);
+  }
+}
+
 /* ── review screen ── */
 .review-layout { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .review-top {
