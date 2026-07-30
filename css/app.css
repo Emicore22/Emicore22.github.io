@@ -476,9 +476,19 @@ button.status-pill:not(:disabled) { cursor: pointer; }
 .comment-list { flex: 1; overflow-y: auto; min-height: 0; padding: 8px; }
 .comment {
   padding: 11px 12px; border-radius: var(--r); cursor: pointer;
-  border: 1px solid transparent; margin-bottom: 3px;
+  border: 1px solid transparent; margin-bottom: 7px; position: relative;
   transition: background var(--fast) var(--ease), border-color var(--fast) var(--ease);
 }
+/* Hairline in the gap between notes. The card's own border is reserved for the
+   selected state, so the rule is a pseudo-element rather than a border-top. */
+.comment + .comment::before {
+  content: ""; position: absolute; left: 12px; right: 12px; top: -4px;
+  height: 1px; background: var(--border);
+  transition: opacity var(--fast) var(--ease);
+}
+/* A filled card draws its own edge; the rule beside it would only add noise. */
+.comment:hover::before, .comment.selected::before,
+.comment:hover + .comment::before, .comment.selected + .comment::before { opacity: 0; }
 .comment:hover { background: var(--surface-2); }
 .comment.selected {
   background: var(--surface-2); border-color: var(--accent);
