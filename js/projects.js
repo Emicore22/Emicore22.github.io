@@ -33,6 +33,26 @@ function posterStyle(name) {
   return `--g1:${g1}; --g2:${g2}; --g3:${g3}`;
 }
 
+// Three dots, drawn rather than typed. The bullet character renders at very
+// different weights from font to font, and this one has to sit quietly in a
+// footer next to 12px text.
+function moreIcon() {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", "0 0 16 4");
+  svg.setAttribute("class", "icon-dots");
+  svg.setAttribute("aria-hidden", "true");
+  for (const cx of [2, 8, 14]) {
+    const dot = document.createElementNS(ns, "circle");
+    dot.setAttribute("cx", cx);
+    dot.setAttribute("cy", "2");
+    dot.setAttribute("r", "1.6");
+    dot.setAttribute("fill", "currentColor");
+    svg.append(dot);
+  }
+  return svg;
+}
+
 // Without this, a file dropped outside the drop zone makes the browser
 // navigate away from the app to the file itself.
 let dropGuardInstalled = false;
@@ -188,12 +208,9 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
         el("div", { class: "video-card-foot" },
           el("span", { class: "dim" }, latest ? `Updated ${fmtDate(latest.uploadedAt)}` : "Not uploaded"),
           el("span", { class: "spacer" }),
-          el("button", {
-            class: "btn-link",
-            onClick: (e) => { e.stopPropagation(); addVideoDialog(project, v); },
-          }, "+ version"),
           // Right-click is the natural gesture here, but it is invisible — this
-          // gives the same menu something you can see.
+          // gives the same menu something you can see. Everything else the card
+          // can do lives inside it, so the footer stays a date and one button.
           el("button", {
             class: "btn-link card-menu-btn",
             title: "More actions",
@@ -204,7 +221,7 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
               const r = e.currentTarget.getBoundingClientRect();
               openCardMenu(project, v, r.left, r.bottom + 4);
             },
-          }, "•••")
+          }, moreIcon())
         )
       );
     });
@@ -264,6 +281,7 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
 
   function openCardMenu(project, video, x, y) {
     contextMenu(x, y, [
+      { label: "Add a version…", onSelect: () => addVideoDialog(project, video) },
       { label: "Rename…", onSelect: () => renameVideoDialog(video) },
       { label: "Delete", danger: true, onSelect: () => askDeleteVideo(project, video) },
     ]);

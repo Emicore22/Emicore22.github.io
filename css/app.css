@@ -345,11 +345,22 @@ main#main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 
 .video-card-foot {
   display: flex; align-items: center; gap: 8px;
-  padding: 7px 8px 7px 12px; font-size: 12px;
+  padding: 6px 7px 6px 12px; font-size: 12px;
   border-top: 1px solid var(--border);
 }
-/* Rename and Delete live in the card's menu — right-click, or this button. */
-.card-menu-btn { font-size: 13px; line-height: 1; letter-spacing: 0.06em; padding: 5px 7px; }
+/* A card can be narrow, and a date that wraps takes the whole footer with it.
+   One line, cut short if it has to be. */
+.video-card-foot .dim {
+  min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* Everything the card can do lives behind this — right-click, or here. */
+.card-menu-btn {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  /* The icon is 15×4; the box around it is what makes it clickable. */
+  min-width: 30px; min-height: 26px; padding: 0; color: var(--text-faint);
+}
+.card-menu-btn:hover, .card-menu-btn:focus-visible { color: var(--text); }
+.icon-dots { display: block; width: 15px; height: 4px; }
 
 /* ── context menu ── */
 .context-menu {
