@@ -481,7 +481,7 @@ button.status-pill:not(:disabled) { cursor: pointer; }
 }
 .comment:hover { background: var(--surface-2); }
 .comment.selected {
-  background: var(--surface-2); border-color: rgba(107, 147, 255, 0.4);
+  background: var(--surface-2); border-color: var(--accent);
 }
 .comment.resolved { opacity: 0.45; }
 .comment-meta { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; }
