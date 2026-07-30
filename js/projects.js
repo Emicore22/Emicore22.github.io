@@ -37,6 +37,13 @@ function posterStyle(name) {
 // first frame of an edit is black more often than not.
 const POSTER_AT = (duration) => Math.min(1, (duration || 0) * 0.1) || 0;
 
+// How long the cut runs, as mm:ss. The timecode module deals in frames, which
+// is the right answer on the review screen and far more than a card needs.
+function clockLength(seconds) {
+  const total = Math.round(seconds);
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
+
 // Three dots, drawn rather than typed. The bullet character renders at very
 // different weights from font to font, and this one has to sit quietly in a
 // footer next to 12px text.
@@ -292,10 +299,18 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
     });
     poster.prepend(preview);
 
+    // How long the cut runs — known only once the file's metadata arrives, so
+    // the badge appears with the frame rather than being promised before it.
+    const badge = poster.querySelector(".video-duration");
+
     let posterTime = 0;
     preview.addEventListener("loadedmetadata", () => {
       posterTime = POSTER_AT(preview.duration);
       preview.currentTime = posterTime;
+      if (badge && Number.isFinite(preview.duration) && preview.duration > 0) {
+        badge.textContent = clockLength(preview.duration);
+        badge.classList.add("ready");
+      }
     });
     // Shown only once a frame is actually on screen, so the card never flashes
     // an empty black box over its gradient.
@@ -324,12 +339,16 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
     const cards = project.videos.map((v) => {
       const open = () => onOpenVideo(project.id, v.id);
       const latest = v.versions.at(-1);
+      // Everything the card says about itself now sits under the frame instead
+      // of on top of it — a name laid over the picture competes with the one
+      // thing the card is there to show.
+      const detail = v.versions.length
+        ? [`v${v.currentVersion}`, `${v.fps} fps`, latest ? fmtDate(latest.uploadedAt) : null]
+        : ["No media yet"];
+
       const poster = el("div", { class: "video-poster", style: posterStyle(v.name) },
         videoStatusPill(v),
-        el("div", { class: "video-poster-label" },
-          el("h3", {}, v.name),
-          el("p", {}, v.versions.length ? `v${v.currentVersion} · ${v.fps} fps` : "No media yet")
-        )
+        el("span", { class: "video-duration" })
       );
       const card = el("div", {
           class: "video-card", role: "button", tabindex: "0",
@@ -348,23 +367,26 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
           },
         },
         poster,
-        el("div", { class: "video-card-foot" },
-          el("span", { class: "dim" }, latest ? `Updated ${fmtDate(latest.uploadedAt)}` : "Not uploaded"),
-          el("span", { class: "spacer" }),
-          // Right-click is the natural gesture here, but it is invisible — this
-          // gives the same menu something you can see. Everything else the card
-          // can do lives inside it, so the footer stays a date and one button.
-          el("button", {
-            class: "btn-link card-menu-btn",
-            title: "More actions",
-            "aria-label": `More actions for ${v.name}`,
-            "aria-haspopup": "menu",
-            onClick: (e) => {
-              e.stopPropagation();
-              const r = e.currentTarget.getBoundingClientRect();
-              openCardMenu(project, v, r.left, r.bottom + 4);
-            },
-          }, moreIcon())
+        el("div", { class: "video-card-body" },
+          el("h3", { class: "video-card-name", title: v.name }, v.name),
+          el("div", { class: "video-card-meta" },
+            el("span", { class: "dim" }, detail.filter(Boolean).join(" · ")),
+            el("span", { class: "spacer" }),
+            // Right-click is the natural gesture here, but it is invisible —
+            // this gives the same menu something you can see. Everything else
+            // the card can do lives inside it.
+            el("button", {
+              class: "btn-link card-menu-btn",
+              title: "More actions",
+              "aria-label": `More actions for ${v.name}`,
+              "aria-haspopup": "menu",
+              onClick: (e) => {
+                e.stopPropagation();
+                const r = e.currentTarget.getBoundingClientRect();
+                openCardMenu(project, v, r.left, r.bottom + 4);
+              },
+            }, moreIcon())
+          )
         )
       );
       attachPreview(card, poster, v);

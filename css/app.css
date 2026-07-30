@@ -301,7 +301,7 @@ main#main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .project-card-new .plus { font-size: 22px; line-height: 1; font-weight: 300; }
 
 /* ── video cards ── */
-.video-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px; }
+.video-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(258px, 1fr)); gap: 18px; }
 .video-card {
   position: relative; cursor: pointer; color: var(--text);
   background: var(--surface); border: 1px solid var(--border);
@@ -318,10 +318,12 @@ main#main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 /* Cover art. The three stops come from the card's inline style — a blob of the
    lighter colour off the top-right over a diagonal base, which is what gives
    these their depth instead of reading as a flat swatch. */
+/* 16:9, uncropped. A squarer cover would be taller still, but it would cut a
+   quarter off the sides of every frame — and a motion-design frame is very
+   often a logo or a lockup sitting exactly there. The card gets its height
+   from the block underneath instead. */
 .video-poster {
-  position: relative; aspect-ratio: 16 / 9; padding: 12px;
-  display: flex; flex-direction: column; justify-content: flex-end;
-  overflow: hidden;
+  position: relative; aspect-ratio: 16 / 9; overflow: hidden;
   background:
     radial-gradient(115% 90% at 78% 16%, var(--g2), transparent 62%),
     linear-gradient(155deg, var(--g1), var(--g3));
@@ -336,43 +338,53 @@ main#main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   transition: opacity var(--med) var(--ease);
 }
 .video-preview.ready { opacity: 1; }
-/* The name has to stay readable over whatever frame turns up under it, and a
-   text-shadow alone loses against a bright one. */
-.video-poster::after {
-  content: ""; position: absolute; inset: auto 0 0 0; height: 62%; z-index: 1;
-  pointer-events: none;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.6), transparent);
+
+/* Length of the cut, over the frame's bottom corner. Only the file knows it,
+   so the badge arrives with the frame rather than being promised beforehand. */
+.video-duration {
+  position: absolute; right: 8px; bottom: 8px; z-index: 2;
+  padding: 2px 7px; border-radius: var(--r-sm);
+  font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums;
+  color: #fff; background: rgba(9, 11, 16, 0.78);
+  opacity: 0; transition: opacity var(--fast) var(--ease);
 }
+.video-duration.ready { opacity: 1; }
 /* The status colours are soft translucent fills built for a dark panel, and
    would all but vanish on a bright gradient — so on the poster the pill keeps
    its text colour but sits on a scrim of its own. */
+/* On the review screen this pill is a control in a toolbar and earns its size.
+   Here it sits on the picture, where the picture should be the loudest thing —
+   so it shrinks to a marker, keeps the status colour that makes the grid
+   scannable, and takes a scrim to survive a bright frame under it. */
 .video-poster .status-pill {
-  position: absolute; top: 10px; left: 10px; z-index: 2;
-  background-color: rgba(9, 11, 16, 0.6); border-color: rgba(255, 255, 255, 0.16);
-  backdrop-filter: blur(4px);
+  position: absolute; top: 9px; left: 9px; z-index: 2;
+  font-size: 10.5px; padding: 3px 9px; letter-spacing: 0.015em;
+  background-color: rgba(9, 11, 16, 0.66); border-color: rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.25);
 }
-/* Above both the frame and the scrim over it. */
-.video-poster-label { position: relative; z-index: 2; min-width: 0; }
-.video-poster-label h3 {
-  margin: 0; font-size: 14.5px; letter-spacing: -0.01em; color: #fff;
-  overflow-wrap: anywhere; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+.video-poster .status-select { padding-right: 21px; background-position: right 7px center; }
+/* The card's own words, under the frame rather than over it. No divider: the
+   frame's edge already separates them, and a rule between the two only adds
+   another line to a grid that has plenty. */
+.video-card-body {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 11px 12px 12px;
 }
-.video-poster-label p {
-  margin: 2px 0 0; font-size: 12px; color: rgba(255, 255, 255, 0.82);
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+.video-card-name {
+  margin: 0; font-size: 14px; font-weight: 600; letter-spacing: -0.01em;
+  color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-
-.video-card-foot {
-  display: flex; align-items: center; gap: 8px;
-  padding: 6px 7px 6px 12px; font-size: 12px;
-  border-top: 1px solid var(--border);
+/* One line, cut short if it has to be — a card can be narrow, and a wrapping
+   line here would push every card in the row taller. */
+.video-card-meta {
+  display: flex; align-items: center; gap: 8px; font-size: 12px;
+  margin-right: -7px;   /* dots out to the card's padding edge */
 }
-/* A card can be narrow, and a date that wraps takes the whole footer with it.
-   One line, cut short if it has to be. */
-.video-card-foot .dim {
+.video-card-meta .dim {
   min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.video-card-foot .card-menu-btn { margin-right: -1px; }
 /* Everything the card can do lives behind this — right-click, or here. */
 .card-menu-btn {
   flex: none; display: inline-flex; align-items: center; justify-content: center;
