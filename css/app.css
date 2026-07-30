@@ -287,11 +287,11 @@ main#main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 }
 .project-card h3 { margin: 0; font-size: 15px; }
 .project-card p { margin: 0; font-size: 12.5px; color: var(--text-faint); }
-.card-delete {
-  position: absolute; top: 8px; right: 8px;
-  font-size: 12px; opacity: 0; transition: opacity var(--fast) var(--ease);
-}
-.project-card:hover .card-delete, .card-delete:focus-visible { opacity: 1; }
+/* Date on the left, the card's menu on the right — as on a video card. The
+   button is pulled out to the card's edge so the dots line up with the padding
+   rather than sitting a button's worth of air inside it. */
+.card-foot { display: flex; align-items: center; gap: 8px; margin-right: -7px; }
+.card-foot p { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .project-card-new {
   align-items: center; justify-content: center; gap: 8px;
@@ -353,6 +353,7 @@ main#main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .video-card-foot .dim {
   min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.video-card-foot .card-menu-btn { margin-right: -1px; }
 /* Everything the card can do lives behind this — right-click, or here. */
 .card-menu-btn {
   flex: none; display: inline-flex; align-items: center; justify-content: center;

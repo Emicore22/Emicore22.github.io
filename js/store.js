@@ -168,6 +168,22 @@ export async function createProject(store, name) {
   return project;
 }
 
+// A project's name is written twice: in the index the grid reads, and in the
+// project's own file. Both have to move together.
+//
+// The project file goes first. If the index write then fails, the grid the
+// rename was started from is still showing the old name — visibly unchanged,
+// which is a better thing to hand back than a grid and a project page that
+// quietly disagree. The folder in Dropbox keeps the name it was created with;
+// share links point at the id, so nothing breaks.
+export async function renameProject(store, pid, name) {
+  await store.updateProject(pid, (project) => ({ ...project, name }));
+  await store.updateIndex((data) => ({
+    ...data,
+    projects: data.projects.map((p) => (p.id === pid ? { ...p, name } : p)),
+  }));
+}
+
 // Revoke share links pointing at content that's about to vanish, so reviewers
 // get "this link is no longer active" instead of a bare server error.
 // Best effort — the worker may not be configured, and a failure here must not

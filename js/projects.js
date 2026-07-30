@@ -4,7 +4,7 @@
 import { el, toast, modal, confirmDialog, contextMenu, fmtDate, spinner } from "./ui.js";
 import { getAccessToken } from "./auth.js";
 import * as dbx from "./dropbox.js";
-import { createProject, deleteProject, deleteVideo, newVideoEntry, mediaDir } from "./store.js";
+import { createProject, deleteProject, deleteVideo, renameProject, newVideoEntry, mediaDir } from "./store.js";
 import { detectFps } from "./fps.js";
 import { statusPill } from "./versions.js";
 import { hashString } from "./authors.js";
@@ -53,6 +53,39 @@ function moreIcon() {
   return svg;
 }
 
+// Shared by both cards — same dialog, different thing being renamed.
+// `onSave` does the writing and is left to throw; the dialog stays open and
+// says so, since the name the user typed is still in the box to try again.
+function renameDialog({ title, hint, value, onSave }) {
+  const input = el("input", { class: "input", value });
+  const save = el("button", { class: "btn btn-primary" }, "Rename");
+  const close = modal(el("div", {},
+    el("h3", {}, title),
+    hint ? el("p", { class: "dim hint" }, hint) : null,
+    el("div", { class: "form-row" }, input),
+    el("div", { class: "modal-actions" }, save)
+  ));
+
+  async function submit() {
+    const name = input.value.trim();
+    if (!name || name === value) return close();
+    save.disabled = true;
+    try {
+      await onSave(name);
+      close();
+      toast(`Renamed to “${name}”.`);
+    } catch (err) {
+      toast(`Could not rename: ${err.message}`, "error");
+      save.disabled = false;
+    }
+  }
+
+  save.addEventListener("click", submit);
+  input.addEventListener("keydown", (e) => e.key === "Enter" && submit());
+  input.focus();
+  input.select();
+}
+
 // Without this, a file dropped outside the drop zone makes the browser
 // navigate away from the app to the file itself.
 let dropGuardInstalled = false;
@@ -74,18 +107,33 @@ export function renderProjectGrid(mount, store, { onOpen }) {
           el("div", {
               class: "project-card", role: "button", tabindex: "0",
               onClick: () => onOpen(p.id),
+              onContextmenu: (e) => {
+                e.preventDefault();
+                openProjectMenu(store, p, draw, e.clientX, e.clientY);
+              },
               onKeydown: (e) => {
+                // Only when the card itself has focus — the menu button inside
+                // it answers to Enter and Space too, and bubbles through here.
+                if (e.target !== e.currentTarget) return;
                 if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(p.id); }
               },
             },
-            el("button", {
-              class: "btn-link danger card-delete",
-              title: `Delete “${p.name}”`,
-              "aria-label": `Delete project ${p.name}`,
-              onClick: (e) => { e.stopPropagation(); askDeleteProject(store, p, draw); },
-            }, "Delete"),
             el("h3", {}, p.name),
-            el("p", { class: "dim" }, `Created ${fmtDate(p.createdAt)}`)
+            el("div", { class: "card-foot" },
+              el("p", { class: "dim" }, `Created ${fmtDate(p.createdAt)}`),
+              el("span", { class: "spacer" }),
+              el("button", {
+                class: "btn-link card-menu-btn",
+                title: "More actions",
+                "aria-label": `More actions for ${p.name}`,
+                "aria-haspopup": "menu",
+                onClick: (e) => {
+                  e.stopPropagation();
+                  const r = e.currentTarget.getBoundingClientRect();
+                  openProjectMenu(store, p, draw, r.left, r.bottom + 4);
+                },
+              }, moreIcon())
+            )
           )
         ),
         el("button", { class: "project-card project-card-new", onClick: () => newProjectDialog(store, onOpen) },
@@ -99,6 +147,26 @@ export function renderProjectGrid(mount, store, { onOpen }) {
     });
   };
   draw();
+}
+
+function openProjectMenu(store, project, after, x, y) {
+  contextMenu(x, y, [
+    {
+      label: "Rename…",
+      onSelect: () => renameDialog({
+        title: "Rename project",
+        // The folder was named from the project's first name and keeps it;
+        // nothing points at the name, so nothing breaks either way.
+        hint: "Changes the name shown in Kontraframe. The project's folder in Dropbox keeps the name it was created with.",
+        value: project.name,
+        onSave: async (name) => {
+          await renameProject(store, project.id, name);
+          after?.();
+        },
+      }),
+    },
+    { label: "Delete", danger: true, onSelect: () => askDeleteProject(store, project, after) },
+  ]);
 }
 
 // Shared by the grid card and the project page. `after` runs once the project
@@ -288,41 +356,21 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
   }
 
   function renameVideoDialog(video) {
-    const input = el("input", { class: "input", value: video.name });
-    const save = el("button", { class: "btn btn-primary" }, "Rename");
-    const close = modal(el("div", {},
-      el("h3", {}, "Rename video"),
+    renameDialog({
+      title: "Rename video",
       // Worth saying plainly: the uploaded file keeps its own name, and so do
       // the share links pointing at it. Only the label in here changes.
-      el("p", { class: "dim hint" },
-        "Changes the name shown in Kontraframe. The uploaded file in Dropbox keeps the name it was uploaded with."),
-      el("div", { class: "form-row" }, input),
-      el("div", { class: "modal-actions" }, save)
-    ));
-
-    async function submit() {
-      const name = input.value.trim();
-      if (!name || name === video.name) return close();
-      save.disabled = true;
-      try {
+      hint: "Changes the name shown in Kontraframe. The uploaded file in Dropbox keeps the name it was uploaded with.",
+      value: video.name,
+      onSave: async (name) => {
         await store.updateProject(projectId, (p) => {
           const target = p.videos.find((x) => x.id === video.id);
           if (target) target.name = name;
           return p;
         });
-        close();
-        toast(`Renamed to “${name}”.`);
         draw();
-      } catch (err) {
-        toast(`Could not rename: ${err.message}`, "error");
-        save.disabled = false;
-      }
-    }
-
-    save.addEventListener("click", submit);
-    input.addEventListener("keydown", (e) => e.key === "Enter" && submit());
-    input.focus();
-    input.select();
+      },
+    });
   }
 
   async function askDeleteVideo(project, video) {
