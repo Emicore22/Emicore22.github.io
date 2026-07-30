@@ -7,7 +7,7 @@ import { Player } from "./player.js";
 import { Annotator, ANNOT_COLORS } from "./annotations.js";
 import { CommentsPanel } from "./comments.js";
 import { versionSwitcher, statusPill } from "./versions.js";
-import { buildAuthorColors, colorResolver } from "./authors.js";
+import { buildAuthorColors, colorResolver, authorInitials } from "./authors.js";
 
 export function mountReviewScreen(mount, opts) {
   // opts: {
@@ -99,6 +99,7 @@ export function mountReviewScreen(mount, opts) {
     currentTime: () => player.currentTime,
     onSeek: (c) => {
       player.seekTo(c.timeSec);
+      player.setActiveMarker(c.parentId || c.id);
       annotator.showShapes(c.annotation?.shapes || null);
     },
     onPost: async ({ text, timeSec }) => {
@@ -277,9 +278,11 @@ export function mountReviewScreen(mount, opts) {
       comments
         .filter((c) => !c.parentId && c.version === shownVersion)
         .map((c) => ({
+          id: c.id,
           timeSec: c.timeSec,
           color: colorFor(c.author),
           label: `${c.author}: ${(c.text || "drawing").slice(0, 60)}`,
+          initials: authorInitials(c.author),
           onSelect: () => panel.select(c),
         }))
     );

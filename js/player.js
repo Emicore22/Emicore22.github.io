@@ -47,6 +47,7 @@ export class Player {
     this.markerRail = el("div", { class: "scrub-markers" });
     this.scrubWrap = el("div", { class: "scrub-wrap" }, this.markerRail, this.scrub);
     this.markers = [];
+    this.activeMarkerId = null;
     this.muteBtn = el("button", { class: "ctrl-btn", title: "Mute" }, icon("volume"));
 
     const stepBackBtn = el("button", { class: "ctrl-btn", title: "Previous frame (←)" }, icon("stepBack"));
@@ -133,12 +134,26 @@ export class Player {
     this.durationEl.textContent = secondsToTimecode(this.video.duration || 0, this.fps);
   }
 
-  // markers: [{timeSec, color, label, onSelect}] — redrawn whenever the
-  // comments change, and again on durationchange since positions are a
-  // percentage of a duration that isn't known until metadata loads.
+  // markers: [{id, timeSec, color, label, initials, onSelect}] — redrawn
+  // whenever the comments change, and again on durationchange since positions
+  // are a percentage of a duration that isn't known until metadata loads.
   setMarkers(markers) {
     this.markers = markers || [];
     this._drawMarkers();
+  }
+
+  // Keeps one tick expanded into its author's avatar — the selected note. Set
+  // from whoever owns selection, so picking a note in the sidebar lights up its
+  // tick just as clicking the tick does.
+  setActiveMarker(id) {
+    this.activeMarkerId = id ?? null;
+    this._syncActiveMarker();
+  }
+
+  _syncActiveMarker() {
+    for (const tick of this.markerRail.children) {
+      tick.classList.toggle("active", tick.dataset.markerId === this.activeMarkerId);
+    }
   }
 
   _drawMarkers() {
@@ -155,7 +170,8 @@ export class Player {
           style: `left:${pct}%; --marker: ${m.color}`,
           title: m.label || secondsToTimecode(m.timeSec, this.fps),
           "aria-label": m.label || `Comment at ${secondsToTimecode(m.timeSec, this.fps)}`,
-        });
+        }, el("span", { class: "marker-initials", "aria-hidden": "true" }, m.initials || ""));
+        if (m.id != null) tick.dataset.markerId = m.id;
         tick.addEventListener("click", (e) => {
           e.stopPropagation();
           if (m.onSelect) m.onSelect();
@@ -164,6 +180,8 @@ export class Player {
         return tick;
       })
     );
+    // Markers are rebuilt wholesale, so the active one has to be re-marked.
+    this._syncActiveMarker();
   }
 
   get currentTime() {

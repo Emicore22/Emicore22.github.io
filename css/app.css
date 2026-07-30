@@ -410,13 +410,34 @@ button.status-pill:not(:disabled) { cursor: pointer; }
 .scrub-marker {
   position: absolute; bottom: 0; transform: translateX(-50%);
   width: 3px; height: 9px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
   background: var(--marker, var(--accent));
-  border: none; border-radius: 2px; cursor: pointer;
-  transition: height var(--fast) var(--ease), width var(--fast) var(--ease);
+  border: 1px solid transparent; border-radius: 2px; cursor: pointer;
+  transition: height var(--fast) var(--ease), width var(--fast) var(--ease),
+    border-radius var(--fast) var(--ease), background var(--fast) var(--ease),
+    border-color var(--fast) var(--ease);
 }
 /* Widened hit area without changing how the tick looks. */
 .scrub-marker::after { content: ""; position: absolute; inset: -3px -5px; }
-.scrub-marker:hover, .scrub-marker:focus-visible { height: 12px; width: 4px; }
+
+/* A tick says "someone commented here"; who it was lives in the sidebar. On
+   hover — and on the selected note — the tick grows into that author's avatar
+   so the two read as the same person without crossing the screen to check.
+   Same fill/border recipe as .avatar, so they are recognisably one thing. */
+.scrub-marker .marker-initials {
+  font-size: 8px; font-weight: 700; letter-spacing: 0.02em; line-height: 1;
+  color: var(--marker); opacity: 0; transform: scale(0.5);
+  transition: opacity var(--fast) var(--ease), transform var(--fast) var(--ease);
+}
+.scrub-marker:hover, .scrub-marker:focus-visible, .scrub-marker.active {
+  width: 19px; height: 19px; border-radius: 50%;
+  background: color-mix(in srgb, var(--marker) 18%, var(--surface));
+  border-color: color-mix(in srgb, var(--marker) 55%, transparent);
+  z-index: 1;
+}
+.scrub-marker:hover .marker-initials,
+.scrub-marker:focus-visible .marker-initials,
+.scrub-marker.active .marker-initials { opacity: 1; transform: scale(1); }
 
 .scrub {
   flex: none; -webkit-appearance: none; appearance: none; height: 4px;
