@@ -255,9 +255,19 @@ export function mountReviewScreen(mount, opts) {
     }
   }
 
+  // The reviewer poll re-reads this every 30 s whether or not anyone has
+  // written anything. Rendering an identical list would not just be wasted
+  // work: it rebuilds every note, so an open reply box and its half-typed
+  // text would disappear under the reviewer twice a minute.
+  let commentsStamp = null;
+
   async function refreshComments() {
     try {
-      comments = await store.loadComments(opts.projectId, video.id);
+      const next = await store.loadComments(opts.projectId, video.id);
+      const stamp = JSON.stringify(next);
+      if (stamp === commentsStamp) return;
+      commentsStamp = stamp;
+      comments = next;
       panel.setComments(comments);
       syncMarkers();
     } catch (err) {

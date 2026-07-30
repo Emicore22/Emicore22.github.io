@@ -80,7 +80,11 @@ export class CommentsPanel {
       this.renderList();
     });
 
-    this._chipTimer = setInterval(() => this._syncChip(), 200);
+    // A frozen chip cannot change on its own — the re-pin click syncs it
+    // directly — so the poll is only for tracking a moving playhead.
+    this._chipTimer = setInterval(() => {
+      if (this.frozenTime == null) this._syncChip();
+    }, 200);
   }
 
   destroy() {
@@ -117,8 +121,15 @@ export class CommentsPanel {
     this.renderList();
   }
 
+  // Polled while the playhead is free, so it only touches the DOM when the
+  // timecode it shows has actually changed — a paused player would otherwise
+  // have it rewriting the same string five times a second.
   _syncChip() {
-    this.tcChip.textContent = secondsToTimecode(this.pinnedTime, this.opts.fps());
+    const tc = secondsToTimecode(this.pinnedTime, this.opts.fps());
+    if (tc !== this._shownChip) {
+      this.tcChip.textContent = tc;
+      this._shownChip = tc;
+    }
     this.tcChip.classList.toggle("pinned", this.frozenTime != null);
   }
 
@@ -210,7 +221,10 @@ export class CommentsPanel {
 
     const item = el(
       "div",
-      { class: `comment${c.resolved ? " resolved" : ""}${c.id === this.selectedId ? " selected" : ""}` },
+      {
+        class: `comment${c.resolved ? " resolved" : ""}${c.id === this.selectedId ? " selected" : ""}`,
+        dataset: { commentId: c.id },
+      },
       el("div", { class: "comment-meta" },
         this._avatar(c.author),
         el("span", { class: "comment-author" }, c.author + (c.isOwner ? " ★" : "")),
@@ -347,6 +361,15 @@ export class CommentsPanel {
   _select(c) {
     this.selectedId = c.id;
     this.opts.onSeek(c);
-    this.renderList();
+    this._syncSelection();
+  }
+
+  // Selection is a class on one row, so it moves by toggling that class.
+  // Re-rendering the list would rebuild every note to restyle one of them,
+  // and would take any open reply box — and whatever was typed in it — with it.
+  _syncSelection() {
+    for (const item of this.listEl.children) {
+      item.classList?.toggle("selected", item.dataset.commentId === this.selectedId);
+    }
   }
 }

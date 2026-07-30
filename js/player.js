@@ -88,12 +88,15 @@ export class Player {
     });
     this.video.addEventListener("play", () => {
       this.playBtn.replaceChildren(icon("pause"));
+      this._startTicking();
       this.onPlayStateChange?.(true);
     });
     this.video.addEventListener("pause", () => {
       this.playBtn.replaceChildren(icon("play"));
+      this._stopTicking();
       this.onPlayStateChange?.(false);
     });
+    this.video.addEventListener("ended", () => this._stopTicking());
     this.video.addEventListener("error", () => this._recoverExpiredLink());
 
     this.scrub.addEventListener("input", () => {
@@ -104,17 +107,31 @@ export class Player {
     this._onKey = (e) => this._handleKey(e);
     document.addEventListener("keydown", this._onKey);
 
+    // timeupdate fires about four times a second — too coarse for a scrubber
+    // that should track the frame. So the playhead is read on every animation
+    // frame instead, but only while it is actually moving: a paused player
+    // holds still, and waking 60 times a second to re-read the same number is
+    // the one thing this app does when the reviewer is doing nothing at all.
     this._raf = null;
-    const tick = () => {
-      if (!this.video.paused) this._syncUi();
-      this._raf = requestAnimationFrame(tick);
+    this._tick = () => {
+      this._syncUi();
+      this._raf = requestAnimationFrame(this._tick);
     };
-    this._raf = requestAnimationFrame(tick);
+    if (!this.video.paused) this._startTicking();
+  }
+
+  _startTicking() {
+    if (this._raf == null) this._raf = requestAnimationFrame(this._tick);
+  }
+
+  _stopTicking() {
+    if (this._raf != null) cancelAnimationFrame(this._raf);
+    this._raf = null;
   }
 
   destroy() {
     document.removeEventListener("keydown", this._onKey);
-    cancelAnimationFrame(this._raf);
+    this._stopTicking();
     this.video.pause();
     this.video.removeAttribute("src");
     this.root.remove();
@@ -218,10 +235,18 @@ export class Player {
     this._syncUi();
   }
 
+  // Runs once per animation frame during playback, so it writes to the DOM
+  // only when the value on screen is actually stale: at 25 fps most frames
+  // land on the same timecode and the same scrubber step.
   _syncUi() {
-    this.timecodeEl.textContent = secondsToTimecode(this.video.currentTime, this.fps);
+    const tc = secondsToTimecode(this.video.currentTime, this.fps);
+    if (tc !== this._shownTc) {
+      this.timecodeEl.textContent = tc;
+      this._shownTc = tc;
+    }
     if (this.video.duration) {
-      this.scrub.value = String(Math.round((this.video.currentTime / this.video.duration) * 1000));
+      const pos = String(Math.round((this.video.currentTime / this.video.duration) * 1000));
+      if (pos !== this.scrub.value) this.scrub.value = pos;
     }
   }
 

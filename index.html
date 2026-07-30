@@ -8,9 +8,38 @@
   <meta name="robots" content="noindex">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Loaded out of the critical path: the stack falls back to system-ui, and
+       display=swap already means text paints before Inter arrives — so there is
+       nothing to gain from letting a third-party round trip block first paint. -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+        rel="stylesheet" media="print" onload="this.media='all'">
   <link rel="stylesheet" href="css/app.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%235b8cff'/><polygon points='38,30 74,50 38,70' fill='white'/></svg>">
+
+  <!-- The import graph is five levels deep (owner-main → projects → store →
+       dropbox → auth → config), and a browser only discovers each level after
+       parsing the one above it — five round trips before any code runs, every
+       one of them revalidated because the app is served no-cache. Naming the
+       whole graph up front collapses that into a single parallel fetch.
+       Mirrors the static imports: update it when those change. -->
+  <link rel="modulepreload" href="js/owner-main.js">
+  <link rel="modulepreload" href="js/config.js">
+  <link rel="modulepreload" href="js/ui.js">
+  <link rel="modulepreload" href="js/auth.js">
+  <link rel="modulepreload" href="js/worker-api.js">
+  <link rel="modulepreload" href="js/dropbox.js">
+  <link rel="modulepreload" href="js/store.js">
+  <link rel="modulepreload" href="js/projects.js">
+  <link rel="modulepreload" href="js/fps.js">
+  <link rel="modulepreload" href="js/versions.js">
+  <link rel="modulepreload" href="js/review-screen.js">
+  <link rel="modulepreload" href="js/player.js">
+  <link rel="modulepreload" href="js/annotations.js">
+  <link rel="modulepreload" href="js/comments.js">
+  <link rel="modulepreload" href="js/authors.js">
+  <link rel="modulepreload" href="js/timecode.js">
+  <link rel="modulepreload" href="js/share.js">
+  <link rel="modulepreload" href="js/settings.js">
 </head>
 <body>
   <div id="app"><noscript>Kontraframe needs JavaScript.</noscript></div>
