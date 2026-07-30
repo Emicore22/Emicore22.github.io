@@ -156,6 +156,9 @@ export function mountReviewScreen(mount, opts) {
         // Mirrors the server: a deleted note takes its replies with it.
         comments = comments.filter((c) => c.id !== id && c.parentId !== id);
         panel.setComments(comments);
+        // The note also owns a tick on the scrubber, which would otherwise sit
+        // there pointing at nothing until something else redrew the rail.
+        syncMarkers();
       } catch (err) {
         toast(`Could not delete comment: ${err.message}`, "error");
       }
