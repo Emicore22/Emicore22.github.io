@@ -294,9 +294,11 @@ export function mountSidebar(mount, store, { onOpen, onOpenGroup, onAllProjects 
         for (const [gid, row] of entry.groupRows) row.classList.toggle("active", pid === id && gid === groupId);
       }
       allBtn.classList.toggle("active", id === null);
-      // Reveal the active folder rather than leaving it collapsed and hidden
-      // behind a triangle nobody had a reason to click yet.
-      if (id && groupId) toggleExpanded(id, true);
+      // Reveal the project you're looking at — its folders show without a
+      // separate click on the triangle, which is the whole point of a
+      // sidebar meant to double as a hierarchy view. The triangle still
+      // works afterward for a reader who wants to fold it back away.
+      if (id) toggleExpanded(id, true);
     },
     destroy() {
       window.removeEventListener("kontraframe:index-changed", onIndexChanged);
@@ -508,6 +510,24 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onOp
   const previewLoaders = new WeakMap();
   let previewObserver = null;
 
+  // Every folder create, rename, delete and video move rebuilds this page
+  // from the one in-memory copy of the project rather than re-fetching it —
+  // but rebuilding also recreates every video card, and a fresh card asks
+  // Dropbox for a fresh temporary link even for a video that was already on
+  // screen a moment ago. That repeated round trip, not the small write
+  // itself, is what actually made these feel slow. A link is good for about
+  // four hours, so caching it here — keyed by path, for as long as this page
+  // is open — means only a video genuinely new to the screen ever waits on
+  // Dropbox again.
+  const mediaLinkCache = new Map(); // path -> {url, expiresAt}
+  async function cachedMediaLink(path) {
+    const cached = mediaLinkCache.get(path);
+    if (cached && cached.expiresAt > Date.now() + 60_000) return cached;
+    const link = await store.mediaLink(path);
+    mediaLinkCache.set(path, link);
+    return link;
+  }
+
   // A redraw throws the old cards away, but a detached <video> can go on
   // pulling bytes down until it is collected. Cut them loose first.
   function releasePreviews() {
@@ -574,7 +594,7 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onOp
 
     previewLoaders.set(card, async () => {
       try {
-        const { url } = await store.mediaLink(source.path);
+        const { url } = await cachedMediaLink(source.path);
         if (card.isConnected) preview.src = url;
       } catch {
         // No link, no preview — the gradient is already doing the job.
@@ -609,7 +629,7 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onOp
       tiles[i].prepend(preview);
       jobs.push(async () => {
         try {
-          const { url } = await store.mediaLink(source.path);
+          const { url } = await cachedMediaLink(source.path);
           if (card.isConnected) preview.src = url;
         } catch {
           // No link, no frame — the tile's own gradient is already doing the job.
