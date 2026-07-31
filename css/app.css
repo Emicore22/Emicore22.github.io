@@ -443,18 +443,14 @@ main#main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction:
 .card-menu-btn:hover, .card-menu-btn:focus-visible { color: var(--text); }
 .icon-dots { display: block; width: 15px; height: 4px; }
 
-/* A dashed twin of .video-card, opening the same new-folder dialog the
-   project grid's own "+ New project" card opens for projects. Grid stretch
-   is what gives it a sensible height — it has no poster or body of its own
-   to set one. */
-.video-card-new {
-  align-items: center; justify-content: center; gap: 8px;
-  padding: 20px; min-height: 160px;
-  font: inherit; cursor: pointer;
-  color: var(--text-faint); border-style: dashed; background: transparent;
+/* The card being dragged, and the folder (or "← ProjectName") it could land
+   on — the browser draws its own drag ghost, so these only need to mark the
+   two ends of the gesture. */
+.video-card.dragging { opacity: 0.4; }
+.video-card.drop-target-active {
+  border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft);
 }
-.video-card-new:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
-.video-card-new .plus { font-size: 22px; line-height: 1; font-weight: 300; }
+.page-head .btn-link.drop-target-active { background: var(--accent-soft); color: var(--accent); }
 
 /* A folder's cover: up to four of its videos' own posters, tiled — a peek
    inside rather than a fifth colour invented just for the folder. Reuses

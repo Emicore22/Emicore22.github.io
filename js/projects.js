@@ -516,24 +516,27 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onOp
         )
       );
       attachPreview(card, poster, v);
+      wireDrag(card, v);
       return card;
     });
 
-    // Folders only exist at the root — one level deep — so they, and the tile
-    // that creates a new one, drop out entirely once you're inside one.
+    // Folders only exist at the root — one level deep — so they drop out
+    // entirely once you're inside one, and so does the way to make a new one.
     const folderCards = groupId ? [] : project.groups.map((g) => buildFolderCard(project, g));
     const tiles = [...folderCards, ...cards];
-    // The root is never really empty: "+ New folder" is always there, the same
-    // way "+ New project" always sits in the grid one level up. Only a folder
-    // with nothing in it needs a message in its place.
-    if (!groupId) tiles.push(buildNewFolderTile(project));
+
+    const backBtn = el("button", {
+      class: "btn-link",
+      onClick: onBack,
+    }, groupId ? `← ${project.name}` : "← Projects");
+    // Drag a video onto "← ProjectName" to send it back to the root — the
+    // only way out of a folder by drag, since there is nothing else in this
+    // view to drop it on.
+    if (groupId) wireGroupDropTarget(backBtn, project, null);
 
     const page = el("div", { class: "page drop-target" },
       el("div", { class: "page-head" },
-        el("button", {
-          class: "btn-link",
-          onClick: onBack,
-        }, groupId ? `← ${project.name}` : "← Projects"),
+        backBtn,
         el("h1", {}, groupId ? currentGroup.name : project.name),
         el("span", { class: "spacer" }),
         groupId ? null : el("button", {
@@ -550,10 +553,22 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onOp
               : [
                   `No videos yet. Add one below ${MAX_LABEL} here (or drag & drop it onto this page), or drop bigger files into `,
                   el("code", {}, `Dropbox/Apps/…/projects/${project.id}/media/`),
-                  " and hit Rescan.",
+                  ". Right-click anywhere on this page to start a folder.",
                 ])
     );
     wireDropZone(page, project);
+    // New folder lives on the empty page itself, not a permanent tile in the
+    // grid — right-click anywhere that isn't a card. Folders are root-only,
+    // so there is nothing to offer once you're inside one.
+    if (!groupId) {
+      page.addEventListener("contextmenu", (e) => {
+        if (e.target.closest(".video-card")) return; // the card's own menu already handled this
+        e.preventDefault();
+        contextMenu(e.clientX, e.clientY, [
+          { label: "New folder…", onSelect: () => newFolderDialog(project) },
+        ]);
+      });
+    }
     releasePreviews();
     mount.replaceChildren(page);
 
@@ -677,7 +692,7 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onOp
   function buildFolderCard(project, group) {
     const items = project.videos.filter((v) => v.groupId === group.id);
     const open = () => onOpenGroup(project.id, group.id);
-    return el("div", {
+    const card = el("div", {
         class: "video-card", role: "button", tabindex: "0",
         "aria-label": `Open folder ${group.name}`,
         onClick: open,
@@ -710,6 +725,8 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onOp
         )
       )
     );
+    wireGroupDropTarget(card, project, group.id);
+    return card;
   }
 
   function openGroupMenu(project, group, x, y) {
@@ -751,11 +768,44 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onOp
     }
   }
 
-  function buildNewFolderTile(project) {
-    return el("button", {
-      class: "video-card video-card-new",
-      onClick: () => newFolderDialog(project),
-    }, el("span", { class: "plus" }, "+"), "New folder");
+  // Drag source. A custom MIME type, not "text/plain" — dropping a video card
+  // must never be mistaken for dropping a URL or pasted text, on this page
+  // or, if a card is ever dragged past the window, on another one.
+  const DRAG_TYPE = "application/x-kontraframe-video-id";
+
+  function wireDrag(card, video) {
+    card.draggable = true;
+    card.addEventListener("dragstart", (e) => {
+      e.dataTransfer.setData(DRAG_TYPE, video.id);
+      e.dataTransfer.effectAllowed = "move";
+      card.classList.add("dragging");
+    });
+    card.addEventListener("dragend", () => card.classList.remove("dragging"));
+  }
+
+  // Drop target, shared by a folder tile and the "← ProjectName" breadcrumb —
+  // the only two places a video can land: a specific folder, or null for out
+  // of one. dataTransfer's actual value is unreadable before drop (only its
+  // types are, which is all dragover needs to decide whether to allow it).
+  function wireGroupDropTarget(node, project, destGroupId) {
+    const accepts = (e) => e.dataTransfer.types.includes(DRAG_TYPE);
+    node.addEventListener("dragover", (e) => {
+      if (!accepts(e)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+    });
+    node.addEventListener("dragenter", (e) => accepts(e) && node.classList.add("drop-target-active"));
+    node.addEventListener("dragleave", () => node.classList.remove("drop-target-active"));
+    node.addEventListener("drop", (e) => {
+      if (!accepts(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      node.classList.remove("drop-target-active");
+      const vid = e.dataTransfer.getData(DRAG_TYPE);
+      const video = project.videos.find((v) => v.id === vid);
+      if (!video || video.groupId === destGroupId) return; // already there
+      moveVideo(project, video, destGroupId);
+    });
   }
 
   function newFolderDialog(project) {
