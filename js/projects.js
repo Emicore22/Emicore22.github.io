@@ -102,20 +102,42 @@ function folderIcon() {
   return svg;
 }
 
+// The disclosure triangle on a project row. A plain chevron rather than a
+// filled arrow, since it only ever means "there's more here" — rotated open
+// by CSS on the button that owns it, not swapped for a second icon.
+function chevronIcon() {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("class", "icon-chevron");
+  svg.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS(SVG_NS, "path");
+  path.setAttribute("d", "M6 4l4 4-4 4");
+  path.setAttribute("fill", "none");
+  path.setAttribute("stroke", "currentColor");
+  path.setAttribute("stroke-width", "1.6");
+  path.setAttribute("stroke-linecap", "round");
+  path.setAttribute("stroke-linejoin", "round");
+  svg.append(path);
+  return svg;
+}
+
 // A persistent list of every project down the left edge of the owner app, so
 // moving between projects is a click in place rather than a trip back through
 // the grid — closer to a file explorer's folder list than card-only browsing.
+// Each project can be expanded in place to show its own folders underneath,
+// one level deep, matching how folders work everywhere else in the app.
 //
-// The list stays in sync from one place: every create, rename and delete goes
-// through store.updateIndex, which fires kontraframe:index-changed once the
-// write actually lands. This listens for that rather than keeping its own
-// copy of "what changes the project list" — which would drift the day a
-// fourth way to edit a project turns up.
+// The project list stays in sync from one place: every create, rename and
+// delete goes through store.updateIndex, which fires kontraframe:index-changed
+// once the write actually lands. An expanded project's folders stay in sync
+// the same way, off store.updateProject's kontraframe:project-changed. Either
+// listened for rather than kept as a separate copy of "what changes this" —
+// which would drift the day a fourth way to edit shows up.
 //
 // Unlike the render* functions above, `mount` is not handed over entirely —
 // the sidebar is prepended as a new first child, leaving whatever is already
 // in `mount` (the routed #main) where it is.
-export function mountSidebar(mount, store, { onOpen, onAllProjects }) {
+export function mountSidebar(mount, store, { onOpen, onOpenGroup, onAllProjects }) {
   const list = el("nav", { class: "sidebar-list" });
   const allBtn = el(
     "button", { class: "sidebar-item sidebar-all", onClick: onAllProjects },
@@ -135,25 +157,123 @@ export function mountSidebar(mount, store, { onOpen, onAllProjects }) {
   );
   mount.prepend(root);
 
-  let activeId = null;
+  let activeProjectId = null;
+  let activeGroupId = null;
+
+  // One entry per project row, built the first time it's drawn and kept for
+  // the sidebar's lifetime. Expansion state, and whatever folders were
+  // already loaded, survive a rename elsewhere or another project appearing —
+  // renderList reuses these nodes rather than rebuilding them from scratch.
+  const rows = new Map();
+
+  function projectRow(p) {
+    let entry = rows.get(p.id);
+    if (entry) return entry;
+
+    const toggle = el("button", {
+      class: "sidebar-toggle",
+      title: "Show folders",
+      "aria-label": `Show folders in ${p.name}`,
+      "aria-expanded": "false",
+      onClick: (e) => {
+        e.stopPropagation();
+        toggleExpanded(p.id);
+      },
+    }, chevronIcon());
+
+    const item = el("button", {
+      class: "sidebar-item",
+      dataset: { projectId: p.id },
+      title: p.name,
+      onClick: () => onOpen(p.id),
+    }, folderIcon(), el("span", { class: "sidebar-item-label" }, p.name));
+
+    const subtree = el("div", { class: "sidebar-subtree" });
+    subtree.hidden = true;
+
+    entry = { p, item, subtree, toggle, row: el("div", { class: "sidebar-row" }, toggle, item),
+      loaded: false, expanded: false, groupRows: new Map() };
+    rows.set(p.id, entry);
+    return entry;
+  }
+
+  function renderGroups(entry, groups) {
+    entry.groupRows.clear();
+    if (!groups.length) {
+      entry.subtree.replaceChildren(el("p", { class: "sidebar-empty" }, "No folders"));
+      return;
+    }
+    entry.subtree.replaceChildren(
+      ...groups.map((g) => {
+        const active = entry.p.id === activeProjectId && g.id === activeGroupId;
+        const row = el("button", {
+          class: `sidebar-item sidebar-item-group${active ? " active" : ""}`,
+          dataset: { groupId: g.id },
+          title: g.name,
+          onClick: () => onOpenGroup(entry.p.id, g.id),
+        }, folderIcon(), el("span", { class: "sidebar-item-label" }, g.name));
+        entry.groupRows.set(g.id, row);
+        return row;
+      })
+    );
+  }
+
+  // forceOpen is how setActive reveals a folder that was navigated to some
+  // other way (a bookmark, the folder's own back-link) without the reader
+  // ever having clicked the disclosure triangle themselves.
+  async function toggleExpanded(pid, forceOpen = false) {
+    const entry = rows.get(pid);
+    if (!entry) return;
+    const next = forceOpen || !entry.expanded;
+    entry.expanded = next;
+    entry.subtree.hidden = !next;
+    entry.toggle.classList.toggle("expanded", next);
+    entry.toggle.setAttribute("aria-expanded", String(next));
+    if (!next || entry.loaded) return;
+
+    entry.loaded = true; // set before the fetch resolves, so a second click
+                          // while it's in flight doesn't start a second one
+    try {
+      const project = await store.loadProject(pid);
+      renderGroups(entry, project.groups || []);
+    } catch (err) {
+      entry.loaded = false; // let a retry actually retry
+      entry.subtree.replaceChildren(el("p", { class: "sidebar-error" }, `Could not load folders: ${err.message}`));
+    }
+  }
 
   function renderList(projects) {
+    const live = new Set(projects.map((p) => p.id));
+    for (const [id, entry] of rows) {
+      if (live.has(id)) continue;
+      entry.row.remove();
+      entry.subtree.remove();
+      rows.delete(id);
+    }
     list.replaceChildren(
-      ...projects.map((p) =>
-        el("button", {
-            class: `sidebar-item${p.id === activeId ? " active" : ""}`,
-            dataset: { projectId: p.id },
-            title: p.name,
-            onClick: () => onOpen(p.id),
-          },
-          folderIcon(), el("span", { class: "sidebar-item-label" }, p.name)
-        )
-      )
+      ...projects.flatMap((p) => {
+        const entry = projectRow(p);
+        entry.p = p; // picks up a rename without losing load/expand state
+        entry.item.title = p.name;
+        entry.item.querySelector(".sidebar-item-label").textContent = p.name;
+        entry.item.classList.toggle("active", p.id === activeProjectId && activeGroupId == null);
+        return [entry.row, entry.subtree];
+      })
     );
   }
 
   const onIndexChanged = (e) => renderList(e.detail.projects);
   window.addEventListener("kontraframe:index-changed", onIndexChanged);
+
+  // Only a project whose folders are actually showing needs to hear about a
+  // write to it — one that's collapsed, or belongs to someone else's expanded
+  // row, picks up the current state anyway the next time it opens.
+  const onProjectChanged = (e) => {
+    const entry = rows.get(e.detail.id);
+    if (!entry?.expanded) return;
+    renderGroups(entry, e.detail.data.groups || []);
+  };
+  window.addEventListener("kontraframe:project-changed", onProjectChanged);
 
   store.loadIndex()
     .then((index) => renderList(index.projects))
@@ -164,16 +284,23 @@ export function mountSidebar(mount, store, { onOpen, onAllProjects }) {
     });
 
   return {
-    // id is null on the grid, where nothing in the sidebar should read as current.
-    setActive(id) {
-      activeId = id;
-      for (const item of list.children) {
-        item.classList.toggle("active", item.dataset.projectId === id);
+    // id is null on the grid, where nothing in the sidebar should read as
+    // current; groupId is set when a folder itself is the current page.
+    setActive(id, groupId = null) {
+      activeProjectId = id;
+      activeGroupId = groupId;
+      for (const [pid, entry] of rows) {
+        entry.item.classList.toggle("active", pid === id && groupId == null);
+        for (const [gid, row] of entry.groupRows) row.classList.toggle("active", pid === id && gid === groupId);
       }
       allBtn.classList.toggle("active", id === null);
+      // Reveal the active folder rather than leaving it collapsed and hidden
+      // behind a triangle nobody had a reason to click yet.
+      if (id && groupId) toggleExpanded(id, true);
     },
     destroy() {
       window.removeEventListener("kontraframe:index-changed", onIndexChanged);
+      window.removeEventListener("kontraframe:project-changed", onProjectChanged);
       root.remove();
     },
   };

@@ -182,6 +182,32 @@ main#main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction:
   min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
+/* The disclosure triangle sits beside the project row rather than inside it,
+   so clicking it (expand/collapse) and clicking the row itself (open the
+   project) stay two separate gestures rather than one button trying to be
+   both. */
+.sidebar-row { display: flex; align-items: center; }
+.sidebar-row .sidebar-item { flex: 1; min-width: 0; }
+.sidebar-toggle {
+  flex: none; width: 20px; height: 28px; margin-right: -2px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--text-faint); background: none; border: none; cursor: pointer;
+  border-radius: var(--r-sm);
+  transition: background var(--fast) var(--ease), color var(--fast) var(--ease);
+}
+.sidebar-toggle:hover { background: var(--surface-2); color: var(--text); }
+.icon-chevron { width: 10px; height: 10px; transition: transform var(--fast) var(--ease); }
+.sidebar-toggle.expanded .icon-chevron { transform: rotate(90deg); }
+
+/* A project's folders, one level deep and indented under it — loaded the
+   first time the triangle opens, kept afterward. */
+.sidebar-subtree { display: flex; flex-direction: column; gap: 1px; margin-bottom: 2px; }
+.sidebar-item-group { padding-left: 30px; font-size: 12.5px; }
+.sidebar-empty, .sidebar-error {
+  margin: 3px 8px 5px 30px; font-size: 12px; color: var(--text-faint);
+}
+.sidebar-error { color: var(--danger); }
+
 /* The player wants the width back; it drops the sidebar the same way the
    comments panel already gives up its column on a narrow screen. */
 .app-body.review-mode .sidebar { display: none; }

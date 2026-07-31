@@ -141,7 +141,7 @@ async function route() {
   } else if (parts[0] === "p" && parts[1] && parts[2] === "g" && parts[3]) {
     const [_, projectId, __, groupId] = parts;
     appBody.classList.remove("review-mode");
-    sidebar.setActive(projectId);
+    sidebar.setActive(projectId, groupId);
     renderProjectDetail(main, store, projectId, {
       groupId,
       onOpenVideo: (pid, vid) => (location.hash = `#/p/${pid}/v/${vid}`),
@@ -182,6 +182,7 @@ async function boot() {
   // #main it was built around, rather than owning a container of its own.
   sidebar = mountSidebar(appBody, store, {
     onOpen: (pid) => (location.hash = `#/p/${pid}`),
+    onOpenGroup: (pid, gid) => (location.hash = `#/p/${pid}/g/${gid}`),
     onAllProjects: () => (location.hash = "#/projects"),
   });
   // Before routing, so screens see the right adminConfigured() state.

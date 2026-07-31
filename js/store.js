@@ -53,9 +53,15 @@ export function ownerStore() {
     },
 
     async updateProject(pid, mutate) {
-      return dbx.updateJson(projectPath(pid), mutate, () => {
+      const next = await dbx.updateJson(projectPath(pid), mutate, () => {
         throw new Error(`Project ${pid} not found in Dropbox`);
       });
+      // Same reasoning as updateIndex's event: every write that can change a
+      // project's folders — or anything else about it — passes through here,
+      // so the sidebar's expanded subtree for this project can stay in sync
+      // without a separate copy of what to watch for.
+      window.dispatchEvent(new CustomEvent("kontraframe:project-changed", { detail: { id: pid, data: next } }));
+      return next;
     },
 
     async loadComments(pid, vid) {
