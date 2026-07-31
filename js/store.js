@@ -272,8 +272,10 @@ export function newGroup(name) {
   return { id: uid("grp"), name, createdAt: new Date().toISOString() };
 }
 
-export async function createGroup(store, pid, name) {
-  const group = newGroup(name);
+// Takes an already-built group rather than a bare name — the caller shows it
+// optimistically before this resolves, and needs the exact same id in both
+// places, not two different ones from two separate uid() calls.
+export async function createGroup(store, pid, group) {
   await store.updateProject(pid, (project) => ({
     ...project,
     groups: [...(project.groups || []), group],

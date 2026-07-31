@@ -486,6 +486,10 @@ main#main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction:
   gap: 2px; background: var(--surface-3);
 }
 .mosaic-tile {
+  /* position:relative so a fetched frame's inset:0 clips to this one cell
+     instead of the whole mosaic — .video-preview otherwise sizes itself
+     against the nearest positioned ancestor, which would be the mosaic. */
+  position: relative; overflow: hidden;
   background:
     radial-gradient(115% 90% at 78% 16%, var(--g2), transparent 62%),
     linear-gradient(155deg, var(--g1), var(--g3));

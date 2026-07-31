@@ -6,7 +6,7 @@ import { getAccessToken } from "./auth.js";
 import * as dbx from "./dropbox.js";
 import {
   createProject, deleteProject, deleteVideo, renameProject, newVideoEntry, mediaDir,
-  createGroup, renameGroup, deleteGroup, moveVideoToGroup,
+  createGroup, newGroup, renameGroup, deleteGroup, moveVideoToGroup,
 } from "./store.js";
 import { detectFps } from "./fps.js";
 import { statusPill } from "./versions.js";
@@ -534,33 +534,43 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onOp
   // way, and what stays if Dropbox declines the link or the browser cannot
   // decode the file — ProRes and HEVC never will, and this app is used with
   // exports straight out of an NLE.
+  // The part every poster frame shares, video card or mosaic tile alike: a
+  // muted <video> that decodes to a frame a little way in and fades from
+  // nothing to that frame once it's actually there, never a flash of black.
+  // preload:"metadata" is what keeps this cheap — the browser reads just
+  // enough of the file to know its duration and dimensions, not the frames.
+  function posterFrameVideo(extra) {
+    const preview = el("video", {
+      class: "video-preview",
+      muted: true, playsInline: true, preload: "metadata",
+      tabindex: "-1", "aria-hidden": "true",
+      ...extra,
+    });
+    let posterTime = 0;
+    preview.addEventListener("loadedmetadata", () => {
+      posterTime = POSTER_AT(preview.duration);
+      preview.currentTime = posterTime;
+    });
+    preview.addEventListener("seeked", () => preview.classList.add("ready"), { once: true });
+    return { preview, getPosterTime: () => posterTime };
+  }
+
   function attachPreview(card, poster, video) {
     const source = video.versions.at(-1);
     if (!source) return;
 
-    const preview = el("video", {
-      class: "video-preview",
-      muted: true, loop: true, playsInline: true, preload: "metadata",
-      tabindex: "-1", "aria-hidden": "true",
-    });
+    const { preview, getPosterTime } = posterFrameVideo({ loop: true });
     poster.prepend(preview);
 
     // How long the cut runs — known only once the file's metadata arrives, so
     // the badge appears with the frame rather than being promised before it.
     const badge = poster.querySelector(".video-duration");
-
-    let posterTime = 0;
     preview.addEventListener("loadedmetadata", () => {
-      posterTime = POSTER_AT(preview.duration);
-      preview.currentTime = posterTime;
       if (badge && Number.isFinite(preview.duration) && preview.duration > 0) {
         badge.textContent = clockLength(preview.duration);
         badge.classList.add("ready");
       }
     });
-    // Shown only once a frame is actually on screen, so the card never flashes
-    // an empty black box over its gradient.
-    preview.addEventListener("seeked", () => preview.classList.add("ready"), { once: true });
 
     previewLoaders.set(card, async () => {
       try {
@@ -576,12 +586,52 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onOp
     card.addEventListener("pointerenter", () => { preview.play?.().catch(() => {}); });
     card.addEventListener("pointerleave", () => {
       preview.pause?.();
-      if (preview.readyState) preview.currentTime = posterTime;
+      if (preview.readyState) preview.currentTime = getPosterTime();
     });
   }
 
+  // A folder's mosaic tiles get a static frame each — real footage instead of
+  // a colour guessed from the video's name, so the cover actually says which
+  // videos are in here. No hover playback: four decoded videos scrubbing at
+  // once in a card this small would be noise, not information, and the tile
+  // is a way to recognise a folder, not to review what's in it.
+  function attachMosaicPreviews(card, tiles, items) {
+    // One loader for the whole card, not one per tile — up to four small
+    // frames belonging to the same folder become visible together (a folder
+    // tile is never half on screen), so there's nothing to gain from giving
+    // the observer four things to watch instead of the one it already does
+    // for every other card.
+    const jobs = [];
+    for (let i = 0; i < tiles.length; i++) {
+      const source = items[i].versions.at(-1);
+      if (!source) continue; // an item with nothing uploaded keeps its gradient
+      const { preview } = posterFrameVideo({});
+      tiles[i].prepend(preview);
+      jobs.push(async () => {
+        try {
+          const { url } = await store.mediaLink(source.path);
+          if (card.isConnected) preview.src = url;
+        } catch {
+          // No link, no frame — the tile's own gradient is already doing the job.
+        }
+      });
+    }
+    if (jobs.length) previewLoaders.set(card, () => Promise.all(jobs.map((job) => job())));
+  }
+
+  // currentProject is the one copy of this page's state. draw() is the only
+  // thing that fetches it; every fast-path mutation below (a folder created,
+  // a video moved) edits this object directly and calls renderPage on it
+  // instead of re-fetching what the write already told it — the same reason
+  // a status-pill pick has always recoloured itself before the save lands.
+  let currentProject = null;
+
   async function draw() {
-    const project = await store.loadProject(projectId);
+    currentProject = await store.loadProject(projectId);
+    renderPage(currentProject);
+  }
+
+  function renderPage(project) {
     const currentGroup = groupId ? project.groups.find((g) => g.id === groupId) : null;
     if (groupId && !currentGroup) throw new Error("Folder not found");
     // Undefined groupId (a video saved before folders existed) reads the same
@@ -701,8 +751,10 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onOp
 
     // Only once the cards are in the document — an element that is not laid out
     // yet never intersects anything, so observing earlier would load nothing.
+    // tiles is folder cards and video cards together — a folder's mosaic loads
+    // exactly the same lazy, once-in-view way a video card's own frame does.
     const observer = watchPreviews();
-    for (const card of cards) observer.observe(card);
+    for (const tile of tiles) observer.observe(tile);
   }
 
   // A menu, not a label — the same pill the review screen uses. Approving a cut
@@ -729,7 +781,7 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onOp
           if (mine !== seq) return; // a newer pick owns the state now
           video.status = previous;
           toast(`Could not change status: ${err.message}`, "error");
-          draw();
+          renderPage(currentProject);
         }
       },
     });
@@ -770,11 +822,20 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onOp
   }
 
   async function moveVideo(project, video, destGroupId) {
+    // Optimistic: the card already looks like it moved — a drag or a menu
+    // pick is a small, fast gesture, and waiting on Dropbox's round trip
+    // before anything on screen moves would make it feel like it didn't
+    // register. Only undone if the write is refused.
+    const previous = video.groupId;
+    if (previous === destGroupId) return;
+    video.groupId = destGroupId;
+    renderPage(currentProject);
     try {
       await moveVideoToGroup(store, project.id, video.id, destGroupId);
-      draw();
     } catch (err) {
+      video.groupId = previous;
       toast(`Could not move “${video.name}”: ${err.message}`, "error");
+      renderPage(currentProject);
     }
   }
 
@@ -819,6 +880,7 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onOp
   function buildFolderCard(project, group) {
     const items = project.videos.filter((v) => v.groupId === group.id);
     const open = () => onOpenGroup(project.id, group.id);
+    const cover = buildFolderCover(group, items);
     const card = el("div", {
         class: "video-card", role: "button", tabindex: "0",
         "aria-label": `Open folder ${group.name}`,
@@ -832,7 +894,7 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onOp
           if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
         },
       },
-      buildFolderCover(group, items),
+      cover,
       el("div", { class: "video-card-body" },
         el("h3", { class: "video-card-name", title: group.name }, group.name),
         el("div", { class: "video-card-meta" },
@@ -853,6 +915,7 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onOp
       )
     );
     wireGroupDropTarget(card, project, group.id);
+    attachMosaicPreviews(card, [...cover.querySelectorAll(".mosaic-tile")], items);
     return card;
   }
 
@@ -864,9 +927,20 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onOp
           title: "Rename folder",
           hint: "Changes the name shown in Kontraframe. Folders are organisation only — this doesn't create or rename anything in Dropbox.",
           value: group.name,
+          // Not awaited: renameDialog closes and toasts success as soon as
+          // this resolves, and the point is for that to happen the instant
+          // the row itself recolours, not once Dropbox has confirmed it.
+          // The write still runs, and still reverts and says so if refused —
+          // it just does that on its own schedule instead of blocking here.
           onSave: async (name) => {
-            await renameGroup(store, project.id, group.id, name);
-            draw();
+            const previous = group.name;
+            group.name = name;
+            renderPage(currentProject);
+            renameGroup(store, project.id, group.id, name).catch((err) => {
+              group.name = previous;
+              toast(`Could not rename “${previous}”: ${err.message}`, "error");
+              renderPage(currentProject);
+            });
           },
         }),
       },
@@ -886,12 +960,22 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onOp
       confirmLabel: "Delete folder",
     });
     if (!ok) return;
+    // Optimistic, same as creating one: the tile is gone and its videos are
+    // back at the root immediately, mirroring exactly what deleteGroup does
+    // server-side. Only undone if the write is refused.
+    const previousGroups = project.groups;
+    const previousVideos = project.videos;
+    project.groups = project.groups.filter((g) => g.id !== group.id);
+    project.videos = project.videos.map((v) => (v.groupId === group.id ? { ...v, groupId: null } : v));
+    renderPage(currentProject);
     try {
       await deleteGroup(store, project.id, group.id);
       toast(`Deleted “${group.name}”.`);
-      draw();
     } catch (err) {
+      project.groups = previousGroups;
+      project.videos = previousVideos;
       toast(`Could not delete folder: ${err.message}`, "error");
+      renderPage(currentProject);
     }
   }
 
@@ -947,13 +1031,20 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onOp
       const name = input.value.trim();
       if (!name) return;
       create.disabled = true;
+      // Optimistic: the folder appears the instant you ask for it, on the
+      // same reasoning as the status pill and a video's move — a create is
+      // a small, fast gesture that should feel like one, and the write to
+      // Dropbox happens invisibly behind it. Only undone if it's refused.
+      const group = newGroup(name);
+      project.groups = [...(project.groups || []), group];
+      close();
+      renderPage(currentProject);
       try {
-        await createGroup(store, project.id, name);
-        close();
-        draw();
+        await createGroup(store, project.id, group);
       } catch (err) {
+        project.groups = project.groups.filter((g) => g.id !== group.id);
         toast(`Could not create folder: ${err.message}`, "error");
-        create.disabled = false;
+        renderPage(currentProject);
       }
     });
     input.addEventListener("keydown", (e) => e.key === "Enter" && create.click());
