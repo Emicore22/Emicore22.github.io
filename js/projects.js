@@ -4,7 +4,10 @@
 import { el, toast, modal, confirmDialog, contextMenu, fmtDate, spinner } from "./ui.js";
 import { getAccessToken } from "./auth.js";
 import * as dbx from "./dropbox.js";
-import { createProject, deleteProject, deleteVideo, renameProject, newVideoEntry, mediaDir } from "./store.js";
+import {
+  createProject, deleteProject, deleteVideo, renameProject, newVideoEntry, mediaDir,
+  createGroup, renameGroup, deleteGroup, moveVideoToGroup,
+} from "./store.js";
 import { detectFps } from "./fps.js";
 import { statusPill } from "./versions.js";
 import { hashString } from "./authors.js";
@@ -365,7 +368,11 @@ function newProjectDialog(store, onOpen) {
   input.addEventListener("keydown", (e) => e.key === "Enter" && create.click());
 }
 
-export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBack }) {
+// groupId is null at a project's root, or a folder's id to show only what's
+// inside it. Folders are one level deep and live entirely in this function —
+// videos stay in one flat array with an optional groupId (see store.js)
+// rather than nesting, so nothing outside browsing needs to know they exist.
+export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onOpenGroup, onBack, groupId = null }) {
   mount.replaceChildren(spinner("Loading project…"));
 
   // Cover previews are fetched only for cards that reach the viewport: each one
@@ -448,7 +455,14 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
 
   async function draw() {
     const project = await store.loadProject(projectId);
-    const cards = project.videos.map((v) => {
+    const currentGroup = groupId ? project.groups.find((g) => g.id === groupId) : null;
+    if (groupId && !currentGroup) throw new Error("Folder not found");
+    // Undefined groupId (a video saved before folders existed) reads the same
+    // as null — both mean "the project root" — so an old project's videos
+    // show up there without a migration.
+    const videosHere = project.videos.filter((v) => (v.groupId || null) === groupId);
+
+    const cards = videosHere.map((v) => {
       const open = () => onOpenVideo(project.id, v.id);
       const latest = v.versions.at(-1);
       // Everything the card says about itself now sits under the frame instead
@@ -505,21 +519,39 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
       return card;
     });
 
+    // Folders only exist at the root — one level deep — so they, and the tile
+    // that creates a new one, drop out entirely once you're inside one.
+    const folderCards = groupId ? [] : project.groups.map((g) => buildFolderCard(project, g));
+    const tiles = [...folderCards, ...cards];
+    // The root is never really empty: "+ New folder" is always there, the same
+    // way "+ New project" always sits in the grid one level up. Only a folder
+    // with nothing in it needs a message in its place.
+    if (!groupId) tiles.push(buildNewFolderTile(project));
+
     const page = el("div", { class: "page drop-target" },
       el("div", { class: "page-head" },
-        el("button", { class: "btn-link", onClick: onBack }, "← Projects"),
-        el("h1", {}, project.name),
+        el("button", {
+          class: "btn-link",
+          onClick: onBack,
+        }, groupId ? `← ${project.name}` : "← Projects"),
+        el("h1", {}, groupId ? currentGroup.name : project.name),
         el("span", { class: "spacer" }),
-        el("button", { class: "btn-link danger", onClick: () => askDeleteProject(store, project, onBack) }, "Delete project"),
+        groupId ? null : el("button", {
+          class: "btn-link danger", onClick: () => askDeleteProject(store, project, onBack),
+        }, "Delete project"),
         el("button", { class: "btn", onClick: () => rescan(project) }, "Rescan folder"),
         el("button", { class: "btn btn-primary", onClick: () => addVideoDialog(project) }, "+ Add video")
       ),
-      cards.length
-        ? el("div", { class: "video-grid" }, ...cards)
+      tiles.length
+        ? el("div", { class: "video-grid" }, ...tiles)
         : el("p", { class: "dim empty-note" },
-            `No videos yet. Add one below ${MAX_LABEL} here (or drag & drop it onto this page), or drop bigger files into `,
-            el("code", {}, `Dropbox/Apps/…/projects/${project.id}/media/`),
-            " and hit Rescan.")
+            groupId
+              ? "No videos in this folder yet. Add one below, or move one in from a video's own menu."
+              : [
+                  `No videos yet. Add one below ${MAX_LABEL} here (or drag & drop it onto this page), or drop bigger files into `,
+                  el("code", {}, `Dropbox/Apps/…/projects/${project.id}/media/`),
+                  " and hit Rescan.",
+                ])
     );
     wireDropZone(page, project);
     releasePreviews();
@@ -565,11 +597,43 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
   }
 
   function openCardMenu(project, video, x, y) {
-    contextMenu(x, y, [
+    const items = [
       { label: "Add a version…", onSelect: () => addVideoDialog(project, video) },
       { label: "Rename…", onSelect: () => renameVideoDialog(video) },
-      { label: "Delete", danger: true, onSelect: () => askDeleteVideo(project, video) },
-    ]);
+    ];
+    // Only offered when there's actually somewhere to go — a project with no
+    // folders and a video that's already at the root has neither a folder to
+    // move into nor one to move out of.
+    const destinations = project.groups.filter((g) => g.id !== video.groupId);
+    if (destinations.length || video.groupId) {
+      items.push({ label: "Move to…", onSelect: () => openMoveMenu(project, video, x, y) });
+    }
+    items.push({ label: "Delete", danger: true, onSelect: () => askDeleteVideo(project, video) });
+    contextMenu(x, y, items);
+  }
+
+  // A second flat menu at the same point, rather than a submenu — contextMenu
+  // only knows how to be a list, and a list of "which folder" needed nowhere
+  // near enough options to be worth teaching it nesting for.
+  function openMoveMenu(project, video, x, y) {
+    const items = [];
+    if (video.groupId) {
+      items.push({ label: "No folder", onSelect: () => moveVideo(project, video, null) });
+    }
+    for (const g of project.groups) {
+      if (g.id === video.groupId) continue;
+      items.push({ label: g.name, onSelect: () => moveVideo(project, video, g.id) });
+    }
+    contextMenu(x, y, items);
+  }
+
+  async function moveVideo(project, video, destGroupId) {
+    try {
+      await moveVideoToGroup(store, project.id, video.id, destGroupId);
+      draw();
+    } catch (err) {
+      toast(`Could not move “${video.name}”: ${err.message}`, "error");
+    }
   }
 
   function renameVideoDialog(video) {
@@ -588,6 +652,134 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
         draw();
       },
     });
+  }
+
+  // A folder's cover: up to four of its own videos' posters, tiled — a peek
+  // inside rather than inventing a fifth colour just for the folder itself.
+  function buildFolderCover(group, items) {
+    if (!items.length) {
+      return el("div", { class: "video-poster folder-mosaic empty", style: posterStyle(group.name) },
+        folderIcon());
+    }
+    const shown = items.slice(0, 4);
+    return el("div", { class: "video-poster folder-mosaic" },
+      ...shown.map((v) => {
+        // A lone tile fills the whole cover; two split it in half. Three or
+        // four fall into the plain 2×2 grid — a gap in the last cell reads
+        // fine, the way a half-full shelf does.
+        const span = shown.length === 1 ? "; grid-column:1/3; grid-row:1/3"
+          : shown.length === 2 ? "; grid-row:1/3" : "";
+        return el("span", { class: "mosaic-tile", style: posterStyle(v.name) + span });
+      })
+    );
+  }
+
+  function buildFolderCard(project, group) {
+    const items = project.videos.filter((v) => v.groupId === group.id);
+    const open = () => onOpenGroup(project.id, group.id);
+    return el("div", {
+        class: "video-card", role: "button", tabindex: "0",
+        "aria-label": `Open folder ${group.name}`,
+        onClick: open,
+        onContextmenu: (e) => {
+          e.preventDefault();
+          openGroupMenu(project, group, e.clientX, e.clientY);
+        },
+        onKeydown: (e) => {
+          if (e.target !== e.currentTarget) return;
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
+        },
+      },
+      buildFolderCover(group, items),
+      el("div", { class: "video-card-body" },
+        el("h3", { class: "video-card-name", title: group.name }, group.name),
+        el("div", { class: "video-card-meta" },
+          el("span", { class: "dim" }, count(items.length, "item")),
+          el("span", { class: "spacer" }),
+          el("button", {
+            class: "btn-link card-menu-btn",
+            title: "More actions",
+            "aria-label": `More actions for ${group.name}`,
+            "aria-haspopup": "menu",
+            onClick: (e) => {
+              e.stopPropagation();
+              const r = e.currentTarget.getBoundingClientRect();
+              openGroupMenu(project, group, r.left, r.bottom + 4);
+            },
+          }, moreIcon())
+        )
+      )
+    );
+  }
+
+  function openGroupMenu(project, group, x, y) {
+    contextMenu(x, y, [
+      {
+        label: "Rename…",
+        onSelect: () => renameDialog({
+          title: "Rename folder",
+          hint: "Changes the name shown in Kontraframe. Folders are organisation only — this doesn't create or rename anything in Dropbox.",
+          value: group.name,
+          onSave: async (name) => {
+            await renameGroup(store, project.id, group.id, name);
+            draw();
+          },
+        }),
+      },
+      { label: "Delete", danger: true, onSelect: () => askDeleteGroup(project, group) },
+    ]);
+  }
+
+  async function askDeleteGroup(project, group) {
+    const n = project.videos.filter((v) => v.groupId === group.id).length;
+    const ok = await confirmDialog({
+      title: `Delete “${group.name}”?`,
+      body: [
+        n
+          ? `Removes this folder. ${count(n, "video")} inside it move back to the project — nothing is deleted.`
+          : "Removes this empty folder.",
+      ],
+      confirmLabel: "Delete folder",
+    });
+    if (!ok) return;
+    try {
+      await deleteGroup(store, project.id, group.id);
+      toast(`Deleted “${group.name}”.`);
+      draw();
+    } catch (err) {
+      toast(`Could not delete folder: ${err.message}`, "error");
+    }
+  }
+
+  function buildNewFolderTile(project) {
+    return el("button", {
+      class: "video-card video-card-new",
+      onClick: () => newFolderDialog(project),
+    }, el("span", { class: "plus" }, "+"), "New folder");
+  }
+
+  function newFolderDialog(project) {
+    const input = el("input", { class: "input", placeholder: "Folder name", autofocus: true });
+    const create = el("button", { class: "btn btn-primary" }, "Create");
+    const close = modal(el("div", {},
+      el("h3", {}, "New folder"),
+      el("div", { class: "form-row" }, input),
+      el("div", { class: "modal-actions" }, create)
+    ));
+    create.addEventListener("click", async () => {
+      const name = input.value.trim();
+      if (!name) return;
+      create.disabled = true;
+      try {
+        await createGroup(store, project.id, name);
+        close();
+        draw();
+      } catch (err) {
+        toast(`Could not create folder: ${err.message}`, "error");
+        create.disabled = false;
+      }
+    });
+    input.addEventListener("keydown", (e) => e.key === "Enter" && create.click());
   }
 
   async function askDeleteVideo(project, video) {
@@ -740,7 +932,9 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onBa
       progressText.classList.remove("hidden");
       const totalMB = file.size / (1024 * 1024);
       try {
-        const entry = existingVideo || newVideoEntry(name, Number(fpsInput.value));
+        // A video added while looking at a folder lands in it — the same way
+        // dropping a file into an open folder puts it there, not at the root.
+        const entry = existingVideo || newVideoEntry(name, Number(fpsInput.value), groupId);
         const n = (existingVideo?.versions.at(-1)?.n || 0) + 1;
         const safeName = file.name.replace(/[^\w.-]+/g, "_");
         const path = `${mediaDir(projectId, entry.id)}/v${n}-${safeName}`;

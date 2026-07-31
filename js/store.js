@@ -45,7 +45,11 @@ export function ownerStore() {
     async loadProject(pid) {
       const res = await dbx.downloadJson(projectPath(pid));
       if (!res) throw new Error(`Project ${pid} not found in Dropbox`);
-      return res.data;
+      // Defaulted at read time rather than migrated on disk, the same way
+      // loadIndex defaults a missing index.json — a project saved before
+      // folders existed has no `groups` key, and every video in it is
+      // implicitly ungrouped rather than missing a `groupId` it never needed.
+      return { groups: [], ...res.data };
     },
 
     async updateProject(pid, mutate) {
@@ -241,7 +245,7 @@ export async function deleteProject(store, pid) {
   return { revoked, filesRemoved };
 }
 
-export function newVideoEntry(name, fps) {
+export function newVideoEntry(name, fps, groupId = null) {
   return {
     id: uid("vid"),
     name,
@@ -249,5 +253,49 @@ export function newVideoEntry(name, fps) {
     status: "in_review",
     currentVersion: 0,
     versions: [],
+    groupId,
   };
+}
+
+// Folders inside a project. Videos stay in one flat array with an optional
+// groupId rather than nesting under their group — every place that already
+// looks a video up by id (the review route, share links, delete) keeps
+// working unchanged, and only the browsing screen needs to know groups exist.
+
+export function newGroup(name) {
+  return { id: uid("grp"), name, createdAt: new Date().toISOString() };
+}
+
+export async function createGroup(store, pid, name) {
+  const group = newGroup(name);
+  await store.updateProject(pid, (project) => ({
+    ...project,
+    groups: [...(project.groups || []), group],
+  }));
+  return group;
+}
+
+export async function renameGroup(store, pid, gid, name) {
+  await store.updateProject(pid, (project) => ({
+    ...project,
+    groups: (project.groups || []).map((g) => (g.id === gid ? { ...g, name } : g)),
+  }));
+}
+
+// Ungroups rather than deletes: a folder organises videos, it doesn't own
+// them, so removing it should not take reviewed footage and its comments
+// down as collateral. Its videos land back at the project root.
+export async function deleteGroup(store, pid, gid) {
+  await store.updateProject(pid, (project) => ({
+    ...project,
+    groups: (project.groups || []).filter((g) => g.id !== gid),
+    videos: project.videos.map((v) => (v.groupId === gid ? { ...v, groupId: null } : v)),
+  }));
+}
+
+export async function moveVideoToGroup(store, pid, vid, groupId) {
+  await store.updateProject(pid, (project) => ({
+    ...project,
+    videos: project.videos.map((v) => (v.id === vid ? { ...v, groupId } : v)),
+  }));
 }

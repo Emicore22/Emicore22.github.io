@@ -443,6 +443,42 @@ main#main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction:
 .card-menu-btn:hover, .card-menu-btn:focus-visible { color: var(--text); }
 .icon-dots { display: block; width: 15px; height: 4px; }
 
+/* A dashed twin of .video-card, opening the same new-folder dialog the
+   project grid's own "+ New project" card opens for projects. Grid stretch
+   is what gives it a sensible height — it has no poster or body of its own
+   to set one. */
+.video-card-new {
+  align-items: center; justify-content: center; gap: 8px;
+  padding: 20px; min-height: 160px;
+  font: inherit; cursor: pointer;
+  color: var(--text-faint); border-style: dashed; background: transparent;
+}
+.video-card-new:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.video-card-new .plus { font-size: 22px; line-height: 1; font-weight: 300; }
+
+/* A folder's cover: up to four of its videos' own posters, tiled — a peek
+   inside rather than a fifth colour invented just for the folder. Reuses
+   .video-poster for the 16:9 box and rounded clipping; only the fill differs. */
+.folder-mosaic {
+  display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
+  gap: 2px; background: var(--surface-3);
+}
+.mosaic-tile {
+  background:
+    radial-gradient(115% 90% at 78% 16%, var(--g2), transparent 62%),
+    linear-gradient(155deg, var(--g1), var(--g3));
+}
+/* An empty folder has nothing to tile, so it falls back to a plain gradient
+   with a glyph — the same treatment an ungrouped video gets before its own
+   frame arrives. */
+.folder-mosaic.empty {
+  display: flex; align-items: center; justify-content: center;
+  background:
+    radial-gradient(115% 90% at 78% 16%, var(--g2), transparent 62%),
+    linear-gradient(155deg, var(--g1), var(--g3));
+}
+.folder-mosaic.empty .icon-16 { width: 30px; height: 30px; color: rgba(255, 255, 255, 0.55); }
+
 /* ── context menu ── */
 .context-menu {
   position: fixed; z-index: 60; min-width: 168px; padding: 5px;

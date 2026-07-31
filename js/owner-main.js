@@ -113,7 +113,15 @@ async function route() {
         authorName: () => "Emi",
         pollComments: api.adminConfigured(),
         headerExtras: [
-          el("button", { class: "btn-link", onClick: () => (location.hash = `#/p/${projectId}`) }, "← Back"),
+          // Back goes to wherever the video actually sits — its folder, or
+          // the project root for one that was never put in a folder.
+          el("button", {
+            class: "btn-link",
+            onClick: () => {
+              const dest = video.groupId ? `#/p/${projectId}/g/${video.groupId}` : `#/p/${projectId}`;
+              location.hash = dest;
+            },
+          }, "← Back"),
         ],
         onStatusChange: async (status) => {
           await store.updateProject(projectId, (p) => {
@@ -130,11 +138,23 @@ async function route() {
     } catch (err) {
       main.replaceChildren(el("p", { class: "error-note" }, `Could not open video: ${err.message}`));
     }
+  } else if (parts[0] === "p" && parts[1] && parts[2] === "g" && parts[3]) {
+    const [_, projectId, __, groupId] = parts;
+    appBody.classList.remove("review-mode");
+    sidebar.setActive(projectId);
+    renderProjectDetail(main, store, projectId, {
+      groupId,
+      onOpenVideo: (pid, vid) => (location.hash = `#/p/${pid}/v/${vid}`),
+      onOpenGroup: (pid, gid) => (location.hash = `#/p/${pid}/g/${gid}`),
+      // Up one level: out of the folder, back to the project root.
+      onBack: () => (location.hash = `#/p/${projectId}`),
+    });
   } else if (parts[0] === "p" && parts[1]) {
     appBody.classList.remove("review-mode");
     sidebar.setActive(parts[1]);
     renderProjectDetail(main, store, parts[1], {
       onOpenVideo: (pid, vid) => (location.hash = `#/p/${pid}/v/${vid}`),
+      onOpenGroup: (pid, gid) => (location.hash = `#/p/${pid}/g/${gid}`),
       onBack: () => (location.hash = "#/projects"),
     });
   } else {
