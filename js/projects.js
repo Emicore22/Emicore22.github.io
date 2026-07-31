@@ -64,6 +64,118 @@ function moreIcon() {
   return svg;
 }
 
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+// A 2×2 cluster of dots for "All Projects" and a filled folder tab for each
+// project — small, monochrome, and coloured by currentColor so a sidebar
+// row's hover and active states carry the icon along with the label for free.
+function gridIcon() {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("class", "icon-16");
+  svg.setAttribute("aria-hidden", "true");
+  for (const [x, y] of [[2, 2], [9, 2], [2, 9], [9, 9]]) {
+    const r = document.createElementNS(SVG_NS, "rect");
+    r.setAttribute("x", x);
+    r.setAttribute("y", y);
+    r.setAttribute("width", "5");
+    r.setAttribute("height", "5");
+    r.setAttribute("rx", "1.2");
+    r.setAttribute("fill", "currentColor");
+    svg.append(r);
+  }
+  return svg;
+}
+
+function folderIcon() {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("class", "icon-16");
+  svg.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS(SVG_NS, "path");
+  path.setAttribute("d", "M1.5 4a1 1 0 0 1 1-1h3.4l1.3 1.4H13a1 1 0 0 1 1 1v6.1a1 1 0 0 1-1 1H2.5a1 1 0 0 1-1-1V4z");
+  path.setAttribute("fill", "currentColor");
+  svg.append(path);
+  return svg;
+}
+
+// A persistent list of every project down the left edge of the owner app, so
+// moving between projects is a click in place rather than a trip back through
+// the grid — closer to a file explorer's folder list than card-only browsing.
+//
+// The list stays in sync from one place: every create, rename and delete goes
+// through store.updateIndex, which fires kontraframe:index-changed once the
+// write actually lands. This listens for that rather than keeping its own
+// copy of "what changes the project list" — which would drift the day a
+// fourth way to edit a project turns up.
+//
+// Unlike the render* functions above, `mount` is not handed over entirely —
+// the sidebar is prepended as a new first child, leaving whatever is already
+// in `mount` (the routed #main) where it is.
+export function mountSidebar(mount, store, { onOpen, onAllProjects }) {
+  const list = el("nav", { class: "sidebar-list" });
+  const allBtn = el(
+    "button", { class: "sidebar-item sidebar-all", onClick: onAllProjects },
+    gridIcon(), el("span", { class: "sidebar-item-label" }, "All Projects")
+  );
+  const root = el(
+    "aside", { class: "sidebar" },
+    allBtn,
+    el("div", { class: "sidebar-head" },
+      el("h4", {}, "Projects"),
+      el("button", {
+        class: "sidebar-add", title: "New project", "aria-label": "New project",
+        onClick: () => newProjectDialog(store, onOpen),
+      }, "+")
+    ),
+    list
+  );
+  mount.prepend(root);
+
+  let activeId = null;
+
+  function renderList(projects) {
+    list.replaceChildren(
+      ...projects.map((p) =>
+        el("button", {
+            class: `sidebar-item${p.id === activeId ? " active" : ""}`,
+            dataset: { projectId: p.id },
+            title: p.name,
+            onClick: () => onOpen(p.id),
+          },
+          folderIcon(), el("span", { class: "sidebar-item-label" }, p.name)
+        )
+      )
+    );
+  }
+
+  const onIndexChanged = (e) => renderList(e.detail.projects);
+  window.addEventListener("kontraframe:index-changed", onIndexChanged);
+
+  store.loadIndex()
+    .then((index) => renderList(index.projects))
+    .catch(() => {
+      // A sidebar that failed to load must not block the page beside it — that
+      // page makes its own loadIndex() or loadProject() call and reports the
+      // same failure there.
+    });
+
+  return {
+    // id is null on the grid, where nothing in the sidebar should read as current.
+    setActive(id) {
+      activeId = id;
+      for (const item of list.children) {
+        item.classList.toggle("active", item.dataset.projectId === id);
+      }
+      allBtn.classList.toggle("active", id === null);
+    },
+    destroy() {
+      window.removeEventListener("kontraframe:index-changed", onIndexChanged);
+      root.remove();
+    },
+  };
+}
+
 // Shared by both cards — same dialog, different thing being renamed.
 // `onSave` does the writing and is left to throw; the dialog stays open and
 // says so, since the name the user typed is still in the box to try again.

@@ -6,7 +6,7 @@ import { el, toast, modal, spinner } from "./ui.js";
 import * as auth from "./auth.js";
 import * as api from "./worker-api.js";
 import { ownerStore } from "./store.js";
-import { renderProjectGrid, renderProjectDetail } from "./projects.js";
+import { renderProjectGrid, renderProjectDetail, mountSidebar } from "./projects.js";
 import { mountReviewScreen } from "./review-screen.js";
 import { openShareDialog } from "./share.js";
 import { pullAdminKey, pushAdminKey } from "./settings.js";
@@ -14,6 +14,8 @@ import { pullAdminKey, pushAdminKey } from "./settings.js";
 const app = document.getElementById("app");
 const store = ownerStore();
 let activeScreen = null;
+let sidebar = null;
+let appBody = null;
 
 function header() {
   return el("header", { class: "app-header" },
@@ -91,6 +93,10 @@ async function route() {
 
   if (parts[0] === "p" && parts[1] && parts[2] === "v" && parts[3]) {
     const [_, projectId, __, videoId] = parts;
+    // The player wants the width the sidebar would otherwise take; "← Back"
+    // is the way out of a project here, same as it always was.
+    appBody.classList.add("review-mode");
+    sidebar.setActive(projectId);
     main.replaceChildren(spinner("Loading video…"));
     try {
       const project = await store.loadProject(projectId);
@@ -125,11 +131,15 @@ async function route() {
       main.replaceChildren(el("p", { class: "error-note" }, `Could not open video: ${err.message}`));
     }
   } else if (parts[0] === "p" && parts[1]) {
+    appBody.classList.remove("review-mode");
+    sidebar.setActive(parts[1]);
     renderProjectDetail(main, store, parts[1], {
       onOpenVideo: (pid, vid) => (location.hash = `#/p/${pid}/v/${vid}`),
       onBack: () => (location.hash = "#/projects"),
     });
   } else {
+    appBody.classList.remove("review-mode");
+    sidebar.setActive(null);
     renderProjectGrid(main, store, {
       onOpen: (pid) => (location.hash = `#/p/${pid}`),
     });
@@ -146,7 +156,14 @@ async function boot() {
     authGate();
     return;
   }
-  app.replaceChildren(header(), el("main", { id: "main" }));
+  appBody = el("div", { class: "app-body" }, el("main", { id: "main" }));
+  app.replaceChildren(header(), appBody);
+  // Prepended, so the sidebar takes the first slot in app-body ahead of the
+  // #main it was built around, rather than owning a container of its own.
+  sidebar = mountSidebar(appBody, store, {
+    onOpen: (pid) => (location.hash = `#/p/${pid}`),
+    onAllProjects: () => (location.hash = "#/projects"),
+  });
   // Before routing, so screens see the right adminConfigured() state.
   try {
     await pullAdminKey();

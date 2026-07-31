@@ -34,7 +34,12 @@ export function ownerStore() {
     },
 
     async updateIndex(mutate) {
-      return dbx.updateJson(indexPath(), mutate, () => ({ schema: 1, projects: [] }));
+      const next = await dbx.updateJson(indexPath(), mutate, () => ({ schema: 1, projects: [] }));
+      // The one choke point every project create/rename/delete passes through
+      // (see createProject/deleteProject/renameProject below), so the sidebar
+      // can stay in sync without its own copy of "what changes the list."
+      window.dispatchEvent(new CustomEvent("kontraframe:index-changed", { detail: next }));
+      return next;
     },
 
     async loadProject(pid) {
