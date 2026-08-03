@@ -397,6 +397,46 @@ main#main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction:
 .project-card-new:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 .project-card-new .plus { font-size: 22px; line-height: 1; font-weight: 300; }
 
+/* ── project list — the grid's row-layout counterpart ── */
+.project-list { display: flex; flex-direction: column; }
+.project-list-head {
+  display: grid; grid-template-columns: 40px 1fr 160px 30px;
+  align-items: center; gap: 14px;
+  padding: 0 12px 8px; margin: 0 0 4px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px; font-weight: 600; color: var(--text-faint);
+  text-transform: uppercase; letter-spacing: 0.07em;
+}
+.project-row {
+  display: grid; grid-template-columns: 40px 1fr 160px 30px;
+  align-items: center; gap: 14px;
+  padding: 7px 12px; cursor: pointer; color: var(--text);
+  border-radius: var(--r-sm); border-bottom: 1px solid var(--border);
+  transition: background var(--fast) var(--ease);
+}
+.project-row:last-child { border-bottom: none; }
+.project-row:hover { background: var(--surface-2); }
+.project-row-swatch {
+  width: 40px; height: 40px; border-radius: var(--r-sm); flex: none;
+  background:
+    radial-gradient(115% 90% at 78% 16%, var(--g2), transparent 62%),
+    linear-gradient(155deg, var(--g1), var(--g3));
+}
+.project-row-name {
+  margin: 0; min-width: 0; font-size: 13.5px; font-weight: 500; letter-spacing: -0.005em;
+  color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.project-row-new {
+  color: var(--text-faint); border-style: dashed; border-color: var(--border);
+}
+.project-row-new:hover { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
+.project-row-swatch-new {
+  display: flex; align-items: center; justify-content: center;
+  background: none; border: 1px dashed var(--border-strong);
+  font-size: 17px; font-weight: 300; line-height: 1;
+}
+.project-row-new:hover .project-row-swatch-new { border-color: var(--accent); color: var(--accent); }
+
 /* ── video cards ── */
 .video-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(258px, 1fr)); gap: 18px; }
 .video-card {

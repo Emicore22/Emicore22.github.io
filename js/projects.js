@@ -20,8 +20,10 @@ const OVER_LIMIT_MSG = `Over ${MAX_LABEL} — drop the file into the project's m
 const VIDEO_FILE = /(^video\/(mp4|webm|quicktime)$)|(\.(mp4|webm|mov)$)/i;
 
 // One view preference for every project page, the same way Figma remembers
-// grid vs. list globally rather than per folder.
+// grid vs. list globally rather than per folder. A separate key from the
+// projects grid's own toggle below — different content, kept free to differ.
 const VIEW_MODE_KEY = "kf_view_mode";
+const PROJECT_VIEW_MODE_KEY = "kf_project_view_mode";
 
 // Three dots, drawn rather than typed. The bullet character renders at very
 // different weights from font to font, and this one has to sit quietly in a
@@ -359,51 +361,128 @@ function installDropGuard() {
   window.addEventListener("drop", (e) => e.preventDefault());
 }
 
+function buildProjectCard(store, p, draw, onOpen) {
+  // A div rather than a button: the card holds its own menu button, and
+  // nesting buttons is invalid.
+  return el("div", {
+      class: "project-card", role: "button", tabindex: "0",
+      onClick: () => onOpen(p.id),
+      onContextmenu: (e) => {
+        e.preventDefault();
+        openProjectMenu(store, p, draw, e.clientX, e.clientY);
+      },
+      onKeydown: (e) => {
+        // Only when the card itself has focus — the menu button inside
+        // it answers to Enter and Space too, and bubbles through here.
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(p.id); }
+      },
+    },
+    el("h3", {}, p.name),
+    el("div", { class: "card-foot" },
+      el("p", { class: "dim" }, `Created ${fmtDate(p.createdAt)}`),
+      el("span", { class: "spacer" }),
+      el("button", {
+        class: "btn-link card-menu-btn",
+        title: "More actions",
+        "aria-label": `More actions for ${p.name}`,
+        "aria-haspopup": "menu",
+        onClick: (e) => {
+          e.stopPropagation();
+          const r = e.currentTarget.getBoundingClientRect();
+          openProjectMenu(store, p, draw, r.left, r.bottom + 4);
+        },
+      }, moreIcon())
+    )
+  );
+}
+
+// The grid's row-layout counterpart — same gradient swatch a folder's own
+// cover is built from, standing in for a project thumbnail no project has.
+function buildProjectRow(store, p, draw, onOpen) {
+  return el("div", {
+      class: "project-row", role: "button", tabindex: "0",
+      "aria-label": `Open ${p.name}`,
+      onClick: () => onOpen(p.id),
+      onContextmenu: (e) => {
+        e.preventDefault();
+        openProjectMenu(store, p, draw, e.clientX, e.clientY);
+      },
+      onKeydown: (e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(p.id); }
+      },
+    },
+    el("div", { class: "project-row-swatch", style: posterStyle(p.name) }),
+    el("h3", { class: "project-row-name", title: p.name }, p.name),
+    el("span", { class: "dim" }, `Created ${fmtDate(p.createdAt)}`),
+    el("button", {
+      class: "btn-link card-menu-btn",
+      title: "More actions",
+      "aria-label": `More actions for ${p.name}`,
+      "aria-haspopup": "menu",
+      onClick: (e) => {
+        e.stopPropagation();
+        const r = e.currentTarget.getBoundingClientRect();
+        openProjectMenu(store, p, draw, r.left, r.bottom + 4);
+      },
+    }, moreIcon())
+  );
+}
+
 export function renderProjectGrid(mount, store, { onOpen }) {
+  let viewMode = localStorage.getItem(PROJECT_VIEW_MODE_KEY) === "list" ? "list" : "grid";
+
   const draw = () => {
     mount.replaceChildren(spinner("Loading projects…"));
     store.loadIndex().then((index) => {
-      const grid = el("div", { class: "project-grid" },
-        // A div rather than a button: the card holds its own delete button,
-        // and nesting buttons is invalid.
-        ...index.projects.map((p) =>
-          el("div", {
-              class: "project-card", role: "button", tabindex: "0",
-              onClick: () => onOpen(p.id),
-              onContextmenu: (e) => {
-                e.preventDefault();
-                openProjectMenu(store, p, draw, e.clientX, e.clientY);
+      const setViewMode = (mode) => {
+        if (mode === viewMode) return;
+        viewMode = mode;
+        localStorage.setItem(PROJECT_VIEW_MODE_KEY, mode);
+        draw();
+      };
+      const viewToggle = el("div", { class: "view-toggle", role: "group", "aria-label": "Layout" },
+        el("button", {
+          class: `view-toggle-btn${viewMode === "grid" ? " active" : ""}`,
+          title: "Grid view", "aria-label": "Grid view", "aria-pressed": String(viewMode === "grid"),
+          onClick: () => setViewMode("grid"),
+        }, gridIcon()),
+        el("button", {
+          class: `view-toggle-btn${viewMode === "list" ? " active" : ""}`,
+          title: "List view", "aria-label": "List view", "aria-pressed": String(viewMode === "list"),
+          onClick: () => setViewMode("list"),
+        }, listIcon())
+      );
+
+      const body = viewMode === "list"
+        ? el("div", { class: "project-list" },
+            index.projects.length
+              ? el("div", { class: "project-list-head" },
+                  el("span", {}), el("span", {}, "Name"), el("span", {}, "Created"), el("span", {})
+                )
+              : null,
+            ...index.projects.map((p) => buildProjectRow(store, p, draw, onOpen)),
+            el("div", {
+                class: "project-row project-row-new", role: "button", tabindex: "0",
+                onClick: () => newProjectDialog(store, onOpen),
               },
-              onKeydown: (e) => {
-                // Only when the card itself has focus — the menu button inside
-                // it answers to Enter and Space too, and bubbles through here.
-                if (e.target !== e.currentTarget) return;
-                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(p.id); }
-              },
-            },
-            el("h3", {}, p.name),
-            el("div", { class: "card-foot" },
-              el("p", { class: "dim" }, `Created ${fmtDate(p.createdAt)}`),
-              el("span", { class: "spacer" }),
-              el("button", {
-                class: "btn-link card-menu-btn",
-                title: "More actions",
-                "aria-label": `More actions for ${p.name}`,
-                "aria-haspopup": "menu",
-                onClick: (e) => {
-                  e.stopPropagation();
-                  const r = e.currentTarget.getBoundingClientRect();
-                  openProjectMenu(store, p, draw, r.left, r.bottom + 4);
-                },
-              }, moreIcon())
+              el("span", { class: "project-row-swatch project-row-swatch-new" }, "+"),
+              el("h3", { class: "project-row-name" }, "New project"),
+              el("span", {}), el("span", {})
             )
           )
-        ),
-        el("button", { class: "project-card project-card-new", onClick: () => newProjectDialog(store, onOpen) },
-          el("span", { class: "plus" }, "+"), "New project")
-      );
+        : el("div", { class: "project-grid" },
+            ...index.projects.map((p) => buildProjectCard(store, p, draw, onOpen)),
+            el("button", { class: "project-card project-card-new", onClick: () => newProjectDialog(store, onOpen) },
+              el("span", { class: "plus" }, "+"), "New project")
+          );
+
       mount.replaceChildren(
-        el("div", { class: "page" }, el("h1", {}, "Projects"), grid)
+        el("div", { class: "page" },
+          el("div", { class: "page-head" }, el("h1", {}, "Projects"), el("span", { class: "spacer" }), viewToggle),
+          body
+        )
       );
     }).catch((err) => {
       mount.replaceChildren(el("p", { class: "error-note" }, `Could not load projects: ${err.message}`));
@@ -832,9 +911,6 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onOp
         el("h1", {}, groupId ? currentGroup.name : project.name),
         el("span", { class: "spacer" }),
         viewToggle,
-        groupId ? null : el("button", {
-          class: "btn-link danger", onClick: () => askDeleteProject(store, project, onBack),
-        }, "Delete project"),
         el("button", { class: "btn", onClick: () => rescan(project) }, "Rescan folder"),
         el("button", { class: "btn btn-primary", onClick: () => addVideoDialog(project) }, "+ Add video")
       ),
