@@ -19,6 +19,10 @@ const MAX_LABEL = `${Math.round(MAX_INAPP_UPLOAD / (1024 * 1024))} MB`;
 const OVER_LIMIT_MSG = `Over ${MAX_LABEL} — drop the file into the project's media folder in Dropbox, then Rescan.`;
 const VIDEO_FILE = /(^video\/(mp4|webm|quicktime)$)|(\.(mp4|webm|mov)$)/i;
 
+// One view preference for every project page, the same way Figma remembers
+// grid vs. list globally rather than per folder.
+const VIEW_MODE_KEY = "kf_view_mode";
+
 // Three dots, drawn rather than typed. The bullet character renders at very
 // different weights from font to font, and this one has to sit quietly in a
 // footer next to 12px text.
@@ -56,6 +60,25 @@ function gridIcon() {
     r.setAttribute("width", "5");
     r.setAttribute("height", "5");
     r.setAttribute("rx", "1.2");
+    r.setAttribute("fill", "currentColor");
+    svg.append(r);
+  }
+  return svg;
+}
+
+// Three stacked rows for the list-view toggle — the grid icon's counterpart.
+function listIcon() {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("class", "icon-16");
+  svg.setAttribute("aria-hidden", "true");
+  for (const y of [2.5, 7, 11.5]) {
+    const r = document.createElementNS(SVG_NS, "rect");
+    r.setAttribute("x", "2");
+    r.setAttribute("y", y);
+    r.setAttribute("width", "12");
+    r.setAttribute("height", "2.5");
+    r.setAttribute("rx", "1");
     r.setAttribute("fill", "currentColor");
     svg.append(r);
   }
@@ -606,9 +629,162 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onOp
   // a status-pill pick has always recoloured itself before the save lands.
   let currentProject = null;
 
+  // One preference for grid vs. list, remembered across every project page —
+  // switching it re-renders the copy of the project already in memory rather
+  // than asking Dropbox for anything, the same fast path every other toggle
+  // on this page uses.
+  let viewMode = localStorage.getItem(VIEW_MODE_KEY) === "list" ? "list" : "grid";
+  function setViewMode(mode) {
+    if (mode === viewMode) return;
+    viewMode = mode;
+    localStorage.setItem(VIEW_MODE_KEY, mode);
+    renderPage(currentProject);
+  }
+
   async function draw() {
     currentProject = await store.loadProject(projectId);
     renderPage(currentProject);
+  }
+
+  function buildVideoCard(project, v) {
+    const open = () => onOpenVideo(project.id, v.id);
+    const latest = v.versions.at(-1);
+    // Everything the card says about itself now sits under the frame instead
+    // of on top of it — a name laid over the picture competes with the one
+    // thing the card is there to show.
+    const detail = v.versions.length
+      ? [`v${v.currentVersion}`, `${v.fps} fps`, latest ? fmtDate(latest.uploadedAt) : null]
+      : ["No media yet"];
+
+    const poster = el("div", { class: "video-poster", style: posterStyle(v.name) },
+      videoStatusPill(v),
+      el("span", { class: "video-duration" })
+    );
+    const card = el("div", {
+        class: "video-card", role: "button", tabindex: "0",
+        "aria-label": `Open ${v.name}`,
+        onClick: open,
+        onContextmenu: (e) => {
+          e.preventDefault();
+          openCardMenu(project, v, e.clientX, e.clientY);
+        },
+        onKeydown: (e) => {
+          // Only when the card itself has focus. The status menu and the
+          // buttons inside it answer to Enter and Space too, and their
+          // keypresses bubble through here on the way up.
+          if (e.target !== e.currentTarget) return;
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
+        },
+      },
+      poster,
+      el("div", { class: "video-card-body" },
+        el("h3", { class: "video-card-name", title: v.name }, v.name),
+        el("div", { class: "video-card-meta" },
+          el("span", { class: "dim" }, detail.filter(Boolean).join(" · ")),
+          el("span", { class: "spacer" }),
+          // Right-click is the natural gesture here, but it is invisible —
+          // this gives the same menu something you can see. Everything else
+          // the card can do lives inside it.
+          el("button", {
+            class: "btn-link card-menu-btn",
+            title: "More actions",
+            "aria-label": `More actions for ${v.name}`,
+            "aria-haspopup": "menu",
+            onClick: (e) => {
+              e.stopPropagation();
+              const r = e.currentTarget.getBoundingClientRect();
+              openCardMenu(project, v, r.left, r.bottom + 4);
+            },
+          }, moreIcon())
+        )
+      )
+    );
+    attachPreview(card, poster, v);
+    wireDrag(card, v);
+    return card;
+  }
+
+  // The same information as a video card, laid out as a single scannable
+  // row instead — a name column wide enough to actually read, a real frame
+  // no bigger than it needs to be to say which video this is. Everything a
+  // card can do (open, right-click menu, drag to a folder) works here too.
+  function buildVideoRow(project, v) {
+    const open = () => onOpenVideo(project.id, v.id);
+    const latest = v.versions.at(-1);
+    const poster = el("div", { class: "video-poster video-row-thumb" });
+    const row = el("div", {
+        class: "video-row", role: "button", tabindex: "0",
+        "aria-label": `Open ${v.name}`,
+        onClick: open,
+        onContextmenu: (e) => {
+          e.preventDefault();
+          openCardMenu(project, v, e.clientX, e.clientY);
+        },
+        onKeydown: (e) => {
+          if (e.target !== e.currentTarget) return;
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
+        },
+      },
+      poster,
+      el("h3", { class: "video-row-name", title: v.name }, v.name),
+      v.versions.length ? videoStatusPill(v) : el("span", { class: "dim" }, "No media yet"),
+      el("span", { class: "dim video-row-meta" }, v.versions.length ? `v${v.currentVersion} · ${v.fps} fps` : ""),
+      el("span", { class: "dim video-row-meta" }, latest ? fmtDate(latest.uploadedAt) : ""),
+      el("button", {
+        class: "btn-link card-menu-btn",
+        title: "More actions",
+        "aria-label": `More actions for ${v.name}`,
+        "aria-haspopup": "menu",
+        onClick: (e) => {
+          e.stopPropagation();
+          const r = e.currentTarget.getBoundingClientRect();
+          openCardMenu(project, v, r.left, r.bottom + 4);
+        },
+      }, moreIcon())
+    );
+    attachPreview(row, poster, v);
+    wireDrag(row, v);
+    return row;
+  }
+
+  function buildFolderRow(project, group) {
+    const items = project.videos.filter((v) => v.groupId === group.id);
+    const open = () => onOpenGroup(project.id, group.id);
+    const cover = buildFolderCover(group, items);
+    cover.classList.add("video-row-thumb");
+    const row = el("div", {
+        class: "video-row", role: "button", tabindex: "0",
+        "aria-label": `Open folder ${group.name}`,
+        onClick: open,
+        onContextmenu: (e) => {
+          e.preventDefault();
+          openGroupMenu(project, group, e.clientX, e.clientY);
+        },
+        onKeydown: (e) => {
+          if (e.target !== e.currentTarget) return;
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
+        },
+      },
+      cover,
+      el("h3", { class: "video-row-name", title: group.name }, group.name),
+      el("span", { class: "dim" }, ""),
+      el("span", { class: "dim video-row-meta" }, count(items.length, "item")),
+      el("span", { class: "dim video-row-meta" }, ""),
+      el("button", {
+        class: "btn-link card-menu-btn",
+        title: "More actions",
+        "aria-label": `More actions for ${group.name}`,
+        "aria-haspopup": "menu",
+        onClick: (e) => {
+          e.stopPropagation();
+          const r = e.currentTarget.getBoundingClientRect();
+          openGroupMenu(project, group, r.left, r.bottom + 4);
+        },
+      }, moreIcon())
+    );
+    wireGroupDropTarget(row, project, group.id);
+    attachMosaicPreviews(row, [...cover.querySelectorAll(".mosaic-tile")], items);
+    return row;
   }
 
   function renderPage(project) {
@@ -619,67 +795,13 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onOp
     // show up there without a migration.
     const videosHere = project.videos.filter((v) => (v.groupId || null) === groupId);
 
-    const cards = videosHere.map((v) => {
-      const open = () => onOpenVideo(project.id, v.id);
-      const latest = v.versions.at(-1);
-      // Everything the card says about itself now sits under the frame instead
-      // of on top of it — a name laid over the picture competes with the one
-      // thing the card is there to show.
-      const detail = v.versions.length
-        ? [`v${v.currentVersion}`, `${v.fps} fps`, latest ? fmtDate(latest.uploadedAt) : null]
-        : ["No media yet"];
-
-      const poster = el("div", { class: "video-poster", style: posterStyle(v.name) },
-        videoStatusPill(v),
-        el("span", { class: "video-duration" })
-      );
-      const card = el("div", {
-          class: "video-card", role: "button", tabindex: "0",
-          "aria-label": `Open ${v.name}`,
-          onClick: open,
-          onContextmenu: (e) => {
-            e.preventDefault();
-            openCardMenu(project, v, e.clientX, e.clientY);
-          },
-          onKeydown: (e) => {
-            // Only when the card itself has focus. The status menu and the
-            // buttons inside it answer to Enter and Space too, and their
-            // keypresses bubble through here on the way up.
-            if (e.target !== e.currentTarget) return;
-            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
-          },
-        },
-        poster,
-        el("div", { class: "video-card-body" },
-          el("h3", { class: "video-card-name", title: v.name }, v.name),
-          el("div", { class: "video-card-meta" },
-            el("span", { class: "dim" }, detail.filter(Boolean).join(" · ")),
-            el("span", { class: "spacer" }),
-            // Right-click is the natural gesture here, but it is invisible —
-            // this gives the same menu something you can see. Everything else
-            // the card can do lives inside it.
-            el("button", {
-              class: "btn-link card-menu-btn",
-              title: "More actions",
-              "aria-label": `More actions for ${v.name}`,
-              "aria-haspopup": "menu",
-              onClick: (e) => {
-                e.stopPropagation();
-                const r = e.currentTarget.getBoundingClientRect();
-                openCardMenu(project, v, r.left, r.bottom + 4);
-              },
-            }, moreIcon())
-          )
-        )
-      );
-      attachPreview(card, poster, v);
-      wireDrag(card, v);
-      return card;
-    });
+    const buildVideo = viewMode === "list" ? buildVideoRow : buildVideoCard;
+    const buildFolder = viewMode === "list" ? buildFolderRow : buildFolderCard;
+    const cards = videosHere.map((v) => buildVideo(project, v));
 
     // Folders only exist at the root — one level deep — so they drop out
     // entirely once you're inside one, and so does the way to make a new one.
-    const folderCards = groupId ? [] : project.groups.map((g) => buildFolderCard(project, g));
+    const folderCards = groupId ? [] : project.groups.map((g) => buildFolder(project, g));
     const tiles = [...folderCards, ...cards];
 
     const backBtn = el("button", {
@@ -691,11 +813,25 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onOp
     // view to drop it on.
     if (groupId) wireGroupDropTarget(backBtn, project, null);
 
+    const viewToggle = el("div", { class: "view-toggle", role: "group", "aria-label": "Layout" },
+      el("button", {
+        class: `view-toggle-btn${viewMode === "grid" ? " active" : ""}`,
+        title: "Grid view", "aria-label": "Grid view", "aria-pressed": String(viewMode === "grid"),
+        onClick: () => setViewMode("grid"),
+      }, gridIcon()),
+      el("button", {
+        class: `view-toggle-btn${viewMode === "list" ? " active" : ""}`,
+        title: "List view", "aria-label": "List view", "aria-pressed": String(viewMode === "list"),
+        onClick: () => setViewMode("list"),
+      }, listIcon())
+    );
+
     const page = el("div", { class: "page drop-target" },
       el("div", { class: "page-head" },
         backBtn,
         el("h1", {}, groupId ? currentGroup.name : project.name),
         el("span", { class: "spacer" }),
+        viewToggle,
         groupId ? null : el("button", {
           class: "btn-link danger", onClick: () => askDeleteProject(store, project, onBack),
         }, "Delete project"),
@@ -703,7 +839,15 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onOp
         el("button", { class: "btn btn-primary", onClick: () => addVideoDialog(project) }, "+ Add video")
       ),
       tiles.length
-        ? el("div", { class: "video-grid" }, ...tiles)
+        ? viewMode === "list"
+          ? el("div", { class: "video-list" },
+              el("div", { class: "video-list-head" },
+                el("span", {}), el("span", {}, "Name"), el("span", {}, "Status"),
+                el("span", {}, "Version"), el("span", {}, "Uploaded"), el("span", {})
+              ),
+              ...tiles
+            )
+          : el("div", { class: "video-grid" }, ...tiles)
         : el("p", { class: "dim empty-note" },
             groupId
               ? "No videos in this folder yet. Add one below, or move one in from a video's own menu."
@@ -719,7 +863,7 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onOp
     // so there is nothing to offer once you're inside one.
     if (!groupId) {
       page.addEventListener("contextmenu", (e) => {
-        if (e.target.closest(".video-card")) return; // the card's own menu already handled this
+        if (e.target.closest(".video-card, .video-row")) return; // the card's own menu already handled this
         e.preventDefault();
         contextMenu(e.clientX, e.clientY, [
           { label: "New folder…", onSelect: () => newFolderDialog(project) },
