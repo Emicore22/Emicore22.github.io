@@ -1,5 +1,8 @@
 /* ───────────────────────────────────────────────────────────────────────────
-   Kontraframe — dark review theme.
+   Kontraframe — dark review theme, modelled on Figma's own app chrome: a
+   neutral (not navy-tinted) charcoal ramp so cover art and video frames stay
+   the most saturated things on screen, a flush sidebar+header shell rather
+   than a separate lighter panel, and Figma's own blue for the one accent.
 
    Everything derives from the tokens below: surfaces are a four-step ramp
    (page → panel → raised → hover) rather than flat fills, so depth comes from
@@ -9,30 +12,30 @@
   color-scheme: dark;
 
   /* surfaces, darkest to lightest */
-  --bg: #0f1115;
-  --surface: #16181e;
-  --surface-2: #1c1f26;
-  --surface-3: #23272f;
+  --bg: #16161a;
+  --surface: #1c1c21;
+  --surface-2: #26262c;
+  --surface-3: #313138;
 
   /* text */
-  --text: #edeff3;
-  --text-dim: #8b929e;
-  --text-faint: #626976;
+  --text: #f2f2f3;
+  --text-dim: #96969e;
+  --text-faint: #6b6b73;
 
   /* lines */
-  --border: #262a32;
-  --border-strong: #343a45;
+  --border: #2b2b31;
+  --border-strong: #3a3a42;
 
   /* accents */
-  --accent: #6b93ff;
-  --accent-hover: #7fa2ff;
-  --accent-soft: rgba(107, 147, 255, 0.14);
+  --accent: #0d99ff;
+  --accent-hover: #38aeff;
+  --accent-soft: rgba(13, 153, 255, 0.16);
   --ok: #3ecf8e;
   --ok-soft: rgba(62, 207, 142, 0.14);
   --warn: #f5a623;
   --warn-soft: rgba(245, 166, 35, 0.14);
-  --danger: #ff5a67;
-  --danger-soft: rgba(255, 90, 103, 0.14);
+  --danger: #f24822;
+  --danger-soft: rgba(242, 72, 34, 0.14);
 
   /* radii */
   --r-sm: 6px;
@@ -50,7 +53,7 @@
   --fast: 0.12s;
   --med: 0.2s;
 
-  --ring: 0 0 0 3px rgba(107, 147, 255, 0.35);
+  --ring: 0 0 0 3px rgba(13, 153, 255, 0.4);
   --font: "Inter", system-ui, -apple-system, sans-serif;
 
   /* Kept so any older rule or snippet referring to these still resolves. */
@@ -77,7 +80,7 @@ html, body {
 
 #app { height: 100%; display: flex; flex-direction: column; }
 
-::selection { background: rgba(107, 147, 255, 0.3); }
+::selection { background: rgba(13, 153, 255, 0.32); }
 
 /* Thin, unobtrusive scrollbars — the default ones are heavy on dark panels. */
 * { scrollbar-width: thin; scrollbar-color: var(--surface-3) transparent; }
@@ -120,7 +123,7 @@ code {
 .app-header {
   display: flex; align-items: center; gap: 14px;
   padding: 0 20px; height: 54px; flex: none;
-  background: color-mix(in srgb, var(--surface) 85%, transparent);
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
   position: relative; z-index: 10;
@@ -148,7 +151,7 @@ main#main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction:
 .sidebar {
   flex: none; width: 218px; display: flex; flex-direction: column;
   padding: 12px 10px; gap: 2px;
-  background: var(--surface); border-right: 1px solid var(--border);
+  background: var(--bg); border-right: 1px solid var(--border);
   overflow-y: auto;
 }
 .sidebar-head {
@@ -174,7 +177,7 @@ main#main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction:
   transition: background var(--fast) var(--ease), color var(--fast) var(--ease);
 }
 .sidebar-item:hover { background: var(--surface-2); color: var(--text); }
-.sidebar-item.active { background: var(--accent-soft); color: var(--accent); }
+.sidebar-item.active { background: var(--surface-2); color: var(--text); font-weight: 500; }
 /* currentColor, so the icon follows the same hover/active colour as the label
    beside it without a second rule to keep in step. */
 .sidebar-item .icon-16 { flex: none; width: 15px; height: 15px; opacity: 0.9; }
@@ -562,11 +565,11 @@ button.status-pill:not(:disabled) { cursor: pointer; }
 .status-select option { background: var(--surface); color: var(--text); font-weight: 500; }
 /* background-color, not the background shorthand: these classes combine with
    .status-select, whose dropdown arrow is a background-image. */
-.status-review { background-color: var(--accent-soft); color: var(--accent); border-color: rgba(107, 147, 255, 0.25); }
+.status-review { background-color: var(--accent-soft); color: var(--accent); border-color: rgba(13, 153, 255, 0.28); }
 .status-changes { background-color: var(--warn-soft); color: var(--warn); border-color: rgba(245, 166, 35, 0.25); }
 .status-approved { background-color: var(--ok-soft); color: var(--ok); border-color: rgba(62, 207, 142, 0.25); }
 .status-select.status-review {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='6' viewBox='0 0 9 6'%3E%3Cpath d='M1 1l3.5 3.5L8 1' fill='none' stroke='%236b93ff' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='6' viewBox='0 0 9 6'%3E%3Cpath d='M1 1l3.5 3.5L8 1' fill='none' stroke='%230d99ff' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 .status-select.status-changes {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='6' viewBox='0 0 9 6'%3E%3Cpath d='M1 1l3.5 3.5L8 1' fill='none' stroke='%23f5a623' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
@@ -736,7 +739,7 @@ button.status-pill:not(:disabled) { cursor: pointer; }
   transition: color var(--fast) var(--ease), background var(--fast) var(--ease);
 }
 .tool-btn:hover { color: var(--text); background: var(--surface-2); }
-.tool-btn.active { color: var(--accent); background: var(--accent-soft); border-color: rgba(107, 147, 255, 0.3); }
+.tool-btn.active { color: var(--accent); background: var(--accent-soft); border-color: rgba(13, 153, 255, 0.32); }
 .toolbar-sep { width: 1px; height: 18px; background: var(--border); }
 .color-btn {
   width: 18px; height: 18px; border-radius: 50%; cursor: pointer;
@@ -844,7 +847,7 @@ button.status-pill:not(:disabled) { cursor: pointer; }
   transition: background var(--fast) var(--ease);
 }
 .tc-chip.pinned { border-color: var(--accent); }
-.tc-link:hover { background: rgba(107, 147, 255, 0.26); }
+.tc-link:hover { background: rgba(13, 153, 255, 0.26); }
 
 /* ── composer ── */
 .composer { flex: none; padding: 12px 16px 16px; border-top: 1px solid var(--border); background: var(--surface); }
