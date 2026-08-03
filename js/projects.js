@@ -10,7 +10,7 @@ import {
 } from "./store.js";
 import { detectFps } from "./fps.js";
 import { statusPill } from "./versions.js";
-import { posterStyle } from "./covers.js";
+import { posterStyle, clockLength, posterFrameVideo } from "./covers.js";
 import { openShareDialog, openFolderShareDialog } from "./share.js";
 import { CONFIG } from "./config.js";
 
@@ -18,17 +18,6 @@ const MAX_INAPP_UPLOAD = 800 * 1024 * 1024;
 const MAX_LABEL = `${Math.round(MAX_INAPP_UPLOAD / (1024 * 1024))} MB`;
 const OVER_LIMIT_MSG = `Over ${MAX_LABEL} — drop the file into the project's media folder in Dropbox, then Rescan.`;
 const VIDEO_FILE = /(^video\/(mp4|webm|quicktime)$)|(\.(mp4|webm|mov)$)/i;
-
-// A frame a little way into the cut, rather than the very first one — the
-// first frame of an edit is black more often than not.
-const POSTER_AT = (duration) => Math.min(1, (duration || 0) * 0.1) || 0;
-
-// How long the cut runs, as mm:ss. The timecode module deals in frames, which
-// is the right answer on the review screen and far more than a card needs.
-function clockLength(seconds) {
-  const total = Math.round(seconds);
-  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
-}
 
 // Three dots, drawn rather than typed. The bullet character renders at very
 // different weights from font to font, and this one has to sit quietly in a
@@ -544,31 +533,6 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onOp
       }
     }, { rootMargin: "250px" });
     return previewObserver;
-  }
-
-  // The gradient stays underneath. It is what shows while the frame is on its
-  // way, and what stays if Dropbox declines the link or the browser cannot
-  // decode the file — ProRes and HEVC never will, and this app is used with
-  // exports straight out of an NLE.
-  // The part every poster frame shares, video card or mosaic tile alike: a
-  // muted <video> that decodes to a frame a little way in and fades from
-  // nothing to that frame once it's actually there, never a flash of black.
-  // preload:"metadata" is what keeps this cheap — the browser reads just
-  // enough of the file to know its duration and dimensions, not the frames.
-  function posterFrameVideo(extra) {
-    const preview = el("video", {
-      class: "video-preview",
-      muted: true, playsInline: true, preload: "metadata",
-      tabindex: "-1", "aria-hidden": "true",
-      ...extra,
-    });
-    let posterTime = 0;
-    preview.addEventListener("loadedmetadata", () => {
-      posterTime = POSTER_AT(preview.duration);
-      preview.currentTime = posterTime;
-    });
-    preview.addEventListener("seeked", () => preview.classList.add("ready"), { once: true });
-    return { preview, getPosterTime: () => posterTime };
   }
 
   function attachPreview(card, poster, video) {

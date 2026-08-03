@@ -13,7 +13,7 @@ import { el, modal, spinner } from "./ui.js";
 import * as api from "./worker-api.js";
 import { reviewerStore } from "./store.js";
 import { mountReviewScreen } from "./review-screen.js";
-import { posterStyle } from "./covers.js";
+import { posterStyle, clockLength, posterFrameVideo } from "./covers.js";
 import { statusPill } from "./versions.js";
 
 const NAME_KEY = "kf_reviewer_name";
@@ -62,12 +62,83 @@ function teardownScreen() {
   }
 }
 
+// Real frames for the grid, same as the owner's project browser: a card's
+// video only starts decoding once it actually reaches the viewport, and the
+// temporary link behind it is worth remembering for as long as this page
+// stays open — flipping back to the grid from a video shouldn't mean every
+// card asks the worker again for a link it already has.
+const mediaLinkCache = new Map(); // videoId -> {url, expiresAt}
+const previewLoaders = new WeakMap();
+let previewObserver = null;
+
+async function cachedMediaLink(token, video) {
+  const cached = mediaLinkCache.get(video.id);
+  if (cached && cached.expiresAt > Date.now() + 60_000) return cached;
+  const res = await api.getMedia(token, video.currentVersion, video.id);
+  const link = { url: res.mediaUrl, expiresAt: res.mediaExpiresAt };
+  mediaLinkCache.set(video.id, link);
+  return link;
+}
+
+// A redraw throws the old cards away, but a detached <video> can go on
+// pulling bytes down until it is collected. Cut them loose first.
+function releasePreviews() {
+  for (const preview of main.querySelectorAll(".video-preview")) {
+    preview.pause?.();
+    preview.removeAttribute("src");
+    preview.load?.();
+  }
+}
+
+function watchPreviews() {
+  previewObserver?.disconnect();
+  previewObserver = new IntersectionObserver((entries, obs) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      obs.unobserve(entry.target); // one load per card, ever
+      previewLoaders.get(entry.target)?.();
+    }
+  }, { rootMargin: "250px" });
+  return previewObserver;
+}
+
+function attachPreview(token, card, poster, video) {
+  const { preview, getPosterTime } = posterFrameVideo({ loop: true });
+  poster.prepend(preview);
+
+  const badge = poster.querySelector(".video-duration");
+  preview.addEventListener("loadedmetadata", () => {
+    if (badge && Number.isFinite(preview.duration) && preview.duration > 0) {
+      badge.textContent = clockLength(preview.duration);
+      badge.classList.add("ready");
+    }
+  });
+
+  previewLoaders.set(card, async () => {
+    try {
+      const { url } = await cachedMediaLink(token, video);
+      if (card.isConnected) preview.src = url;
+    } catch {
+      // No link, no preview — the gradient is already doing the job.
+    }
+  });
+
+  // A preview that plays on hover is motion the reader did not ask for.
+  if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+  card.addEventListener("pointerenter", () => { preview.play?.().catch(() => {}); });
+  card.addEventListener("pointerleave", () => {
+    preview.pause?.();
+    if (preview.readyState) preview.currentTime = getPosterTime();
+  });
+}
+
 // The folder link's landing page — every video in the folder, so the
 // reviewer picks one rather than being dropped into whichever came first.
 function showFolderGrid(token, folderSession, name) {
   teardownScreen();
 
   async function openVideo(video) {
+    releasePreviews();
     main.replaceChildren(spinner(`Loading “${video.name}”…`));
     let full;
     try {
@@ -83,7 +154,11 @@ function showFolderGrid(token, folderSession, name) {
     const hasMedia = video.versions.length > 0;
     const open = hasMedia ? () => openVideo(video) : undefined;
     const detail = hasMedia ? [`v${video.currentVersion}`, `${video.fps} fps`] : ["No media yet"];
-    return el("div", {
+    const poster = el("div", { class: "video-poster", style: posterStyle(video.name) },
+      statusPill(video.status),
+      el("span", { class: "video-duration" })
+    );
+    const card = el("div", {
         class: "video-card",
         role: hasMedia ? "button" : undefined,
         tabindex: hasMedia ? "0" : undefined,
@@ -93,14 +168,17 @@ function showFolderGrid(token, folderSession, name) {
           if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
         } : undefined,
       },
-      el("div", { class: "video-poster", style: posterStyle(video.name) }, statusPill(video.status)),
+      poster,
       el("div", { class: "video-card-body" },
         el("h3", { class: "video-card-name", title: video.name }, video.name),
         el("div", { class: "video-card-meta" }, el("span", { class: "dim" }, detail.join(" · ")))
       )
     );
+    if (hasMedia) attachPreview(token, card, poster, video);
+    return card;
   });
 
+  releasePreviews();
   main.replaceChildren(
     el("div", { class: "page" },
       el("div", { class: "page-head" }, el("h1", {}, folderSession.group.name)),
@@ -109,6 +187,11 @@ function showFolderGrid(token, folderSession, name) {
         : el("p", { class: "dim empty-note" }, "No videos in this folder yet.")
     )
   );
+
+  // Only once the cards are in the document — an element that is not laid
+  // out yet has no viewport intersection to report.
+  const observer = watchPreviews();
+  for (const card of cards) observer.observe(card);
 }
 
 // A single video — the same screen a direct video link has always opened,
