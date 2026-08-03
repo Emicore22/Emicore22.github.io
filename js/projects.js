@@ -237,6 +237,13 @@ export function mountSidebar(mount, store, { onOpen, onOpenGroup, onAllProjects 
     entry.toggle.setAttribute("aria-expanded", String(next));
     if (!next || entry.loaded) return;
 
+    // The subtree just became visible but is still empty, and the fetch
+    // below takes a real round trip — without this the triangle turns and
+    // then nothing happens for a moment, which reads as broken rather than
+    // loading. Every click after this one is instant, because entry.loaded
+    // skips straight past here.
+    entry.subtree.replaceChildren(el("p", { class: "sidebar-empty" }, "Loading…"));
+
     entry.loaded = true; // set before the fetch resolves, so a second click
                           // while it's in flight doesn't start a second one
     try {
