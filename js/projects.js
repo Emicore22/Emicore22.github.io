@@ -11,6 +11,7 @@ import {
 import { detectFps } from "./fps.js";
 import { statusPill } from "./versions.js";
 import { hashString } from "./authors.js";
+import { openShareDialog } from "./share.js";
 import { CONFIG } from "./config.js";
 
 const MAX_INAPP_UPLOAD = 800 * 1024 * 1024;
@@ -824,10 +825,16 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onOp
   }
 
   function openCardMenu(project, video, x, y) {
-    const items = [
+    const items = [];
+    // Only offered once there's actually something to send — a share link
+    // to a video with no uploaded frames has nothing for a reviewer to open.
+    if (video.versions.length) {
+      items.push({ label: "Share…", onSelect: () => openShareDialog({ projectId: project.id, video }) });
+    }
+    items.push(
       { label: "Add a version…", onSelect: () => addVideoDialog(project, video) },
       { label: "Rename…", onSelect: () => renameVideoDialog(video) },
-    ];
+    );
     // Only offered when there's actually somewhere to go — a project with no
     // folders and a video that's already at the root has neither a folder to
     // move into nor one to move out of.
