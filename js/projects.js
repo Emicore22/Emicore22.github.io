@@ -188,8 +188,14 @@ export function mountSidebar(mount, store, { onOpen, onOpenGroup, onAllProjects 
       onClick: () => onOpen(p.id),
     }, folderIcon(), el("span", { class: "sidebar-item-label" }, p.name));
 
-    const subtree = el("div", { class: "sidebar-subtree" });
-    subtree.hidden = true;
+    // .hidden, not the hidden attribute: .sidebar-subtree sets its own
+    // display (flex, for the column of folder rows), and that author rule
+    // and the browser's default [hidden] one carry equal specificity — as
+    // the later-loaded stylesheet, this app's own rule silently won, so
+    // subtree.hidden = true was flipping the attribute correctly and doing
+    // nothing visible. The shared .hidden utility carries !important
+    // specifically so a class like this can't relitigate the point.
+    const subtree = el("div", { class: "sidebar-subtree hidden" });
 
     entry = { p, item, subtree, toggle, row: el("div", { class: "sidebar-row" }, toggle, item),
       loaded: false, expanded: false, groupRows: new Map() };
@@ -226,7 +232,7 @@ export function mountSidebar(mount, store, { onOpen, onOpenGroup, onAllProjects 
     if (!entry) return;
     const next = forceOpen || !entry.expanded;
     entry.expanded = next;
-    entry.subtree.hidden = !next;
+    entry.subtree.classList.toggle("hidden", !next);
     entry.toggle.classList.toggle("expanded", next);
     entry.toggle.setAttribute("aria-expanded", String(next));
     if (!next || entry.loaded) return;
