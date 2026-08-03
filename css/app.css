@@ -409,10 +409,13 @@ main#main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction:
 }
 /* A frame from the cut itself, over the gradient rather than instead of it —
    the gradient is the loading state and the fallback. Faded in only once a
-   frame has been decoded, so a card never flashes an empty black box. */
+   frame has been decoded, so a card never flashes an empty black box.
+   object-fit:contain rather than cover — a portrait or square cut cropped to
+   16:9 loses the parts of the frame that actually say what it is; the card's
+   own background:#000 letterboxes it instead. */
 .video-preview {
   position: absolute; inset: 0; z-index: 0;
-  width: 100%; height: 100%; object-fit: cover;
+  width: 100%; height: 100%; object-fit: contain;
   opacity: 0; pointer-events: none; background: #000;
   transition: opacity var(--med) var(--ease);
 }
