@@ -186,17 +186,21 @@ main#main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction:
    so clicking it (expand/collapse) and clicking the row itself (open the
    project) stay two separate gestures rather than one button trying to be
    both. */
-.sidebar-row { display: flex; align-items: center; }
+.sidebar-row { display: flex; align-items: center; gap: 1px; }
 .sidebar-row .sidebar-item { flex: 1; min-width: 0; }
+/* A real target, not a sliver: the negative margin this used to lean on for
+   tight spacing put it and the row button one pixel apart with an ambiguous
+   boundary between them, which is exactly where a real click — as opposed to
+   a script's — lands slightly off and hits the wrong one. */
 .sidebar-toggle {
-  flex: none; width: 20px; height: 28px; margin-right: -2px; padding: 0;
+  flex: none; width: 26px; height: 30px; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
   color: var(--text-faint); background: none; border: none; cursor: pointer;
   border-radius: var(--r-sm);
   transition: background var(--fast) var(--ease), color var(--fast) var(--ease);
 }
-.sidebar-toggle:hover { background: var(--surface-2); color: var(--text); }
-.icon-chevron { width: 10px; height: 10px; transition: transform var(--fast) var(--ease); }
+.sidebar-toggle:hover, .sidebar-toggle:focus-visible { background: var(--surface-2); color: var(--text); }
+.icon-chevron { width: 11px; height: 11px; transition: transform var(--fast) var(--ease); }
 .sidebar-toggle.expanded .icon-chevron { transform: rotate(90deg); }
 
 /* A project's folders, one level deep and indented under it — loaded the
