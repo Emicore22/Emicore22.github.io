@@ -10,32 +10,14 @@ import {
 } from "./store.js";
 import { detectFps } from "./fps.js";
 import { statusPill } from "./versions.js";
-import { hashString } from "./authors.js";
-import { openShareDialog } from "./share.js";
+import { posterStyle } from "./covers.js";
+import { openShareDialog, openFolderShareDialog } from "./share.js";
 import { CONFIG } from "./config.js";
 
 const MAX_INAPP_UPLOAD = 800 * 1024 * 1024;
 const MAX_LABEL = `${Math.round(MAX_INAPP_UPLOAD / (1024 * 1024))} MB`;
 const OVER_LIMIT_MSG = `Over ${MAX_LABEL} — drop the file into the project's media folder in Dropbox, then Rescan.`;
 const VIDEO_FILE = /(^video\/(mp4|webm|quicktime)$)|(\.(mp4|webm|mov)$)/i;
-
-// Cover art for a video card. There is no thumbnail to show — nobody has made
-// one, and the file itself lives behind a temporary link — but the video does
-// have a name, so the name picks the gradient. Same name, same colours, every
-// time the page is drawn, which is what makes a card recognisable at a glance.
-const POSTERS = [
-  ["#6d4aff", "#a78bfa", "#3b1e8f"], // violet
-  ["#ff7a59", "#ffb37a", "#d94a7a"], // coral
-  ["#22d3ee", "#7dd3fc", "#2563eb"], // cyan
-  ["#e352c8", "#f9a8d4", "#7c2d8f"], // magenta
-  ["#5b8cff", "#93c5fd", "#3730a3"], // indigo
-  ["#a855f7", "#f0abfc", "#6d28d9"], // orchid
-];
-
-function posterStyle(name) {
-  const [g1, g2, g3] = POSTERS[hashString(name) % POSTERS.length];
-  return `--g1:${g1}; --g2:${g2}; --g3:${g3}`;
-}
 
 // A frame a little way into the cut, rather than the very first one — the
 // first frame of an edit is black more often than not.
@@ -961,6 +943,7 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onOp
 
   function openGroupMenu(project, group, x, y) {
     contextMenu(x, y, [
+      { label: "Share…", onSelect: () => openFolderShareDialog({ projectId: project.id, group }) },
       {
         label: "Rename…",
         onSelect: () => renameDialog({

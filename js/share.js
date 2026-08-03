@@ -1,4 +1,8 @@
-// Owner share dialog: create/copy/revoke client review links (via worker).
+// Owner share dialogs: create/copy/revoke client review links (via worker).
+// One video, or a whole folder — the dialog itself is the same either way;
+// only what it hands the worker (videoId vs groupId) and which existing
+// links belong to it differ, so both are built on one shared core rather
+// than two copies of the same create/list/copy/revoke plumbing.
 
 import { el, toast, modal, fmtDate } from "./ui.js";
 import * as api from "./worker-api.js";
@@ -7,7 +11,7 @@ import * as api from "./worker-api.js";
 // correctly from a subdirectory (e.g. /kontraframe/) as well as a domain root.
 const reviewUrl = (token) => new URL(`review.html?token=${token}`, location.href).toString();
 
-export function openShareDialog({ projectId, video }) {
+function openShareDialogCore({ title, hint, scope, mine, emptyMessage }) {
   if (!api.workerConfigured()) {
     toast("Share links need the Cloudflare Worker — see setup/SETUP.md (step 4–6).", "error");
     return;
@@ -28,8 +32,8 @@ export function openShareDialog({ projectId, video }) {
   const listBox = el("div", { class: "share-list" }, el("p", { class: "dim" }, "Loading existing links…"));
 
   modal(el("div", { class: "share-dialog" },
-    el("h3", {}, `Share “${video.name}”`),
-    el("p", { class: "dim hint" }, "Anyone with the link can watch and comment — no account needed."),
+    el("h3", {}, title),
+    el("p", { class: "dim hint" }, hint),
     el("div", { class: "form-row" }, labelInput),
     el("div", { class: "form-row" }, expirySelect, createBtn),
     resultBox,
@@ -42,7 +46,7 @@ export function openShareDialog({ projectId, video }) {
     try {
       const days = Number(expirySelect.value);
       const expiresAt = new Date(Date.now() + days * 86400 * 1000).toISOString();
-      const res = await api.createShare({ projectId, videoId: video.id, label: labelInput.value.trim(), expiresAt });
+      const res = await api.createShare({ ...scope, label: labelInput.value.trim(), expiresAt });
       const url = reviewUrl(res.token);
       const urlInput = el("input", { class: "input share-url", value: url, readOnly: true });
       resultBox.replaceChildren(
@@ -68,12 +72,12 @@ export function openShareDialog({ projectId, video }) {
   async function refreshList() {
     try {
       const res = await api.listShares();
-      const mine = res.shares.filter((s) => s.videoId === video.id && !s.revoked);
-      if (!mine.length) {
-        listBox.replaceChildren(el("p", { class: "dim" }, "No active links for this video."));
+      const mineNow = mine(res.shares);
+      if (!mineNow.length) {
+        listBox.replaceChildren(el("p", { class: "dim" }, emptyMessage));
         return;
       }
-      listBox.replaceChildren(...mine.map((s) =>
+      listBox.replaceChildren(...mineNow.map((s) =>
         el("div", { class: "share-item" },
           el("span", {}, s.label || "Unnamed link"),
           el("span", { class: "dim" }, `expires ${fmtDate(s.expiresAt)}`),
@@ -104,4 +108,26 @@ export function openShareDialog({ projectId, video }) {
     }
   }
   refreshList();
+}
+
+export function openShareDialog({ projectId, video }) {
+  openShareDialogCore({
+    title: `Share “${video.name}”`,
+    hint: "Anyone with the link can watch and comment — no account needed.",
+    scope: { projectId, videoId: video.id },
+    mine: (shares) => shares.filter((s) => s.videoId === video.id && !s.revoked),
+    emptyMessage: "No active links for this video.",
+  });
+}
+
+// A folder link opens to a grid of every video inside it — the reviewer
+// picks which to watch, rather than the link pointing at just one.
+export function openFolderShareDialog({ projectId, group }) {
+  openShareDialogCore({
+    title: `Share “${group.name}”`,
+    hint: "Anyone with the link can see every video in this folder, choose which to review first, and comment — no account needed.",
+    scope: { projectId, groupId: group.id },
+    mine: (shares) => shares.filter((s) => s.groupId === group.id && !s.revoked),
+    emptyMessage: "No active links for this folder.",
+  });
 }

@@ -79,37 +79,61 @@ async function route(request, env) {
   const path = url.pathname;
 
   // ── reviewer endpoints (share-token auth) ──
+  //
+  // A share names either one video or a whole folder. A folder token has no
+  // fixed video — /api/session with no ?video= returns the folder's grid
+  // instead of a player, and every other endpoint needs ?video=/{video} to
+  // say which one. resolveShareVideo is the one place that turns "this
+  // token plus whatever video the caller named" into a video that is
+  // actually allowed: a video-scoped share always resolves to its own
+  // video regardless of what's asked for, and a folder-scoped share must
+  // load the project to confirm the requested video genuinely belongs to
+  // that folder — otherwise this would be the one place a folder link
+  // could be walked into the rest of the account.
   if (path === "/api/session" && request.method === "GET") {
     const share = await requireShare(env, url.searchParams.get("token"));
-    return json(await buildSession(env, share));
+    const requestedVideo = url.searchParams.get("video");
+    if (share.groupId && !requestedVideo) {
+      return json(await buildFolderSession(env, share));
+    }
+    const videoId = await resolveShareVideo(env, share, requestedVideo);
+    return json(await buildSession(env, share.projectId, videoId));
   }
   if (path === "/api/media" && request.method === "GET") {
     const share = await requireShare(env, url.searchParams.get("token"));
+    const videoId = await resolveShareVideo(env, share, url.searchParams.get("video"));
     const version = Number(url.searchParams.get("version"));
-    return json(await mediaLink(env, share, version));
+    const project = await readProject(env, share.projectId);
+    const video = project.videos.find((v) => v.id === videoId);
+    if (!video) throw fail(404, "Video not found");
+    return json(await mediaLinkForVideo(env, video, version));
   }
   if (path === "/api/comments" && request.method === "GET") {
     const share = await requireShare(env, url.searchParams.get("token"));
-    const doc = await readComments(env, share.projectId, share.videoId);
+    const videoId = await resolveShareVideo(env, share, url.searchParams.get("video"));
+    const doc = await readComments(env, share.projectId, videoId);
     return json({ comments: doc.comments });
   }
   if (path === "/api/comments" && request.method === "POST") {
     const body = await readBody(request);
     const share = await requireShare(env, body.token);
     rateLimit(share.token);
+    const videoId = await resolveShareVideo(env, share, body.video);
     const comment = validateComment(body, { isOwner: false });
-    await appendComment(env, share.projectId, share.videoId, comment);
+    await appendComment(env, share.projectId, videoId, comment);
     return json({ comment });
   }
   // Reviewers set the approval status — the whole point of sending them a
-  // link. Scoped to the one video their token covers, and shares the comment
-  // rate limit so a token can't hammer Dropbox.
+  // link. Scoped to whichever video their token (plus, for a folder share,
+  // their ?video=) covers, and shares the comment rate limit so a token
+  // can't hammer Dropbox.
   if (path === "/api/status" && request.method === "POST") {
     const body = await readBody(request);
     const share = await requireShare(env, body.token);
     rateLimit(share.token);
+    const videoId = await resolveShareVideo(env, share, body.video);
     if (!STATUSES.includes(body.status)) throw fail(400, "Unknown status");
-    await setVideoStatus(env, share.projectId, share.videoId, body.status);
+    await setVideoStatus(env, share.projectId, videoId, body.status);
     return json({ status: body.status });
   }
 
@@ -154,12 +178,17 @@ async function route(request, env) {
     }
     if (path === "/admin/shares" && request.method === "POST") {
       const body = await readBody(request);
-      if (!body.projectId || !body.videoId) throw fail(400, "projectId and videoId required");
+      if (!body.projectId) throw fail(400, "projectId required");
+      if (!body.videoId && !body.groupId) throw fail(400, "videoId or groupId required");
+      if (body.videoId && body.groupId) throw fail(400, "Provide videoId or groupId, not both");
       const token = "s-" + hex(crypto.getRandomValues(new Uint8Array(16)));
       const share = {
         token,
         projectId: String(body.projectId),
-        videoId: String(body.videoId),
+        // Exactly one of these is set — that's what makes a share
+        // video-scoped or folder-scoped everywhere else in this file.
+        videoId: body.videoId ? String(body.videoId) : null,
+        groupId: body.groupId ? String(body.groupId) : null,
         label: String(body.label || "").slice(0, 120),
         createdAt: new Date().toISOString(),
         expiresAt: body.expiresAt || new Date(Date.now() + 30 * 86400 * 1000).toISOString(),
@@ -421,10 +450,9 @@ async function readProject(env, pid) {
   return res.data;
 }
 
-async function mediaLink(env, share, versionN) {
-  const project = await readProject(env, share.projectId);
-  const video = project.videos.find((v) => v.id === share.videoId);
-  if (!video) throw fail(404, "Video not found");
+// Given a video already resolved (and, for a folder share, already checked
+// against the token's group), gets a link for one of its versions.
+async function mediaLinkForVideo(env, video, versionN) {
   const version = video.versions.find((v) => v.n === versionN) || video.versions.at(-1);
   if (!version) throw fail(404, "No media uploaded yet");
   const res = await dbx(env, "https://api.dropboxapi.com/2/files/get_temporary_link", {
@@ -437,12 +465,28 @@ async function mediaLink(env, share, versionN) {
   return { mediaUrl: data.link, mediaExpiresAt: Date.now() + 3.5 * 3600 * 1000, version: version.n };
 }
 
-async function buildSession(env, share) {
+// The one gate a folder share's ?video= param passes through. A video-scoped
+// share ignores whatever was asked for and always resolves to its own video —
+// there is nothing else it could mean. A folder-scoped share has no fixed
+// video, so the caller must name one, and it has to actually carry that
+// share's groupId in the real project data: without this check a folder
+// link's token would work as a skeleton key for every video anywhere in the
+// account, not just the ones the folder it named actually contains.
+async function resolveShareVideo(env, share, requestedVideoId) {
+  if (share.videoId) return share.videoId;
+  if (!requestedVideoId) throw fail(400, "video required");
   const project = await readProject(env, share.projectId);
-  const video = project.videos.find((v) => v.id === share.videoId);
+  const video = project.videos.find((v) => v.id === requestedVideoId);
+  if (!video || video.groupId !== share.groupId) throw fail(403, "That video isn't part of this share");
+  return requestedVideoId;
+}
+
+async function buildSession(env, projectId, videoId) {
+  const project = await readProject(env, projectId);
+  const video = project.videos.find((v) => v.id === videoId);
   if (!video) throw fail(404, "Video not found");
-  const media = await mediaLink(env, share, video.currentVersion);
-  const commentsDoc = await readComments(env, share.projectId, share.videoId);
+  const media = await mediaLinkForVideo(env, video, video.currentVersion);
+  const commentsDoc = await readComments(env, projectId, videoId);
   return {
     project: { id: project.id, name: project.name },
     video: {
@@ -457,6 +501,28 @@ async function buildSession(env, share) {
     comments: commentsDoc.comments,
     mediaUrl: media.mediaUrl,
     mediaExpiresAt: media.mediaExpiresAt,
+  };
+}
+
+// The grid a folder link opens to: every video in the folder, none of the
+// per-video detail (comments, a media link) that only the video the reviewer
+// actually picks needs to pay for.
+async function buildFolderSession(env, share) {
+  const project = await readProject(env, share.projectId);
+  const group = (project.groups || []).find((g) => g.id === share.groupId);
+  if (!group) throw fail(404, "Folder not found");
+  const videos = project.videos.filter((v) => v.groupId === share.groupId);
+  return {
+    project: { id: project.id, name: project.name },
+    group: { id: group.id, name: group.name },
+    videos: videos.map((v) => ({
+      id: v.id,
+      name: v.name,
+      fps: v.fps,
+      status: v.status,
+      currentVersion: v.currentVersion,
+      versions: v.versions.map((ver) => ({ n: ver.n, label: ver.label || "" })),
+    })),
   };
 }
 

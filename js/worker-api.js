@@ -44,25 +44,33 @@ async function request(path, { method = "GET", body, admin = false } = {}) {
 }
 
 // ── Reviewer (share-token) endpoints ────────────────────────────────────────
+//
+// videoId is only ever needed for a folder share, whose token has no video
+// of its own — a video-scoped share ignores it and always resolves to the
+// one video it names, both here and on the worker. Appending it only when
+// present keeps a plain video link's requests exactly as they were before
+// folder shares existed.
 
-export function getSession(token) {
-  return request(`/api/session?token=${encodeURIComponent(token)}`);
+const videoQuery = (videoId) => (videoId ? `&video=${encodeURIComponent(videoId)}` : "");
+
+export function getSession(token, videoId) {
+  return request(`/api/session?token=${encodeURIComponent(token)}${videoQuery(videoId)}`);
 }
 
-export function getMedia(token, version) {
-  return request(`/api/media?token=${encodeURIComponent(token)}&version=${version}`);
+export function getMedia(token, version, videoId) {
+  return request(`/api/media?token=${encodeURIComponent(token)}&version=${version}${videoQuery(videoId)}`);
 }
 
-export function getComments(token) {
-  return request(`/api/comments?token=${encodeURIComponent(token)}`);
+export function getComments(token, videoId) {
+  return request(`/api/comments?token=${encodeURIComponent(token)}${videoQuery(videoId)}`);
 }
 
-export function postComment(token, comment) {
-  return request("/api/comments", { method: "POST", body: { token, ...comment } });
+export function postComment(token, comment, videoId) {
+  return request("/api/comments", { method: "POST", body: { token, video: videoId, ...comment } });
 }
 
-export function postStatus(token, status) {
-  return request("/api/status", { method: "POST", body: { token, status } });
+export function postStatus(token, status, videoId) {
+  return request("/api/status", { method: "POST", body: { token, status, video: videoId } });
 }
 
 // ── Owner (admin) endpoints ─────────────────────────────────────────────────
@@ -72,10 +80,11 @@ export function adminComment(payload) {
   return request("/admin/comments", { method: "POST", body: payload, admin: true });
 }
 
-export function createShare({ projectId, videoId, label, expiresAt }) {
+// Exactly one of videoId/groupId — the worker rejects both or neither.
+export function createShare({ projectId, videoId, groupId, label, expiresAt }) {
   return request("/admin/shares", {
     method: "POST",
-    body: { projectId, videoId, label, expiresAt },
+    body: { projectId, videoId, groupId, label, expiresAt },
     admin: true,
   });
 }

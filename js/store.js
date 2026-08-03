@@ -142,29 +142,33 @@ export function ownerStore() {
   };
 }
 
-export function reviewerStore(token) {
+// videoId is only meaningful for a folder share, whose token names a folder
+// rather than one fixed video — pass it when reviewing a specific video from
+// a folder link; a plain video link's own store just leaves it out, and the
+// worker resolves the token's own video exactly as it always has.
+export function reviewerStore(token, videoId = null) {
   return {
     mode: "reviewer",
     token,
 
     async loadComments() {
-      const res = await api.getComments(token);
+      const res = await api.getComments(token, videoId);
       return res.comments;
     },
 
     async addComment(_pid, _vid, { author, timeSec, text, annotation, version, parentId = null }) {
-      const res = await api.postComment(token, { author, timeSec, text, annotation, version, parentId });
+      const res = await api.postComment(token, { author, timeSec, text, annotation, version, parentId }, videoId);
       return res.comment;
     },
 
     async mediaLinkForVersion(version) {
-      const res = await api.getMedia(token, version);
+      const res = await api.getMedia(token, version, videoId);
       return { url: res.mediaUrl, expiresAt: res.mediaExpiresAt };
     },
 
     // The worker writes project.json; reviewers have no Dropbox access.
     async setStatus(status) {
-      await api.postStatus(token, status);
+      await api.postStatus(token, status, videoId);
     },
   };
 }
