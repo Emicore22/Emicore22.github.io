@@ -181,7 +181,11 @@ async function route(request, env) {
       if (!body.projectId) throw fail(400, "projectId required");
       if (!body.videoId && !body.groupId) throw fail(400, "videoId or groupId required");
       if (body.videoId && body.groupId) throw fail(400, "Provide videoId or groupId, not both");
-      const token = "s-" + hex(crypto.getRandomValues(new Uint8Array(16)));
+      // 8 random bytes (64 bits) is already far past what a network-facing
+      // bearer token needs against brute force — the win from spending more
+      // of them on hex digits (4 bits each) instead of base62 (~5.95 bits
+      // each) is a token nobody wants to paste into a Slack message.
+      const token = "s-" + base62(crypto.getRandomValues(new Uint8Array(8)), 11);
       const share = {
         token,
         projectId: String(body.projectId),
@@ -234,8 +238,12 @@ function timingSafeEqual(a, b) {
   return diff === 0;
 }
 
+// Accepts both: the original 32-hex-char token (already-issued links keep
+// working) and the shorter base62 one new links use.
+const SHARE_TOKEN = /^s-([0-9a-f]{32}|[0-9A-Za-z]{11})$/;
+
 async function requireShare(env, token) {
-  if (!token || !/^s-[0-9a-f]{32}$/.test(token)) throw fail(403, "Invalid link", "expired");
+  if (!token || !SHARE_TOKEN.test(token)) throw fail(403, "Invalid link", "expired");
   const doc = await readShares(env);
   const share = doc.shares.find((s) => s.token === token);
   if (!share || share.revoked) throw fail(403, "This link is no longer active", "expired");
@@ -528,4 +536,24 @@ async function buildFolderSession(env, share) {
 
 function hex(bytes) {
   return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// Random bytes as fixed-length base62 — denser than hex (~5.95 bits/char vs
+// 4), so a token needs noticeably fewer characters for the same entropy.
+// Treats the whole byte string as one big integer and repeatedly divides it
+// down rather than mapping each byte to a digit on its own, which would bias
+// some digits over others (256 isn't a multiple of 62). Left-padded with the
+// alphabet's own "0" so every token this produces is exactly `length` long —
+// otherwise a value with leading zero bits would come out shorter, and a
+// short token isn't the same string as its zero-padded self.
+const BASE62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+function base62(bytes, length) {
+  let n = 0n;
+  for (const b of bytes) n = (n << 8n) | BigInt(b);
+  let out = "";
+  while (n > 0n) {
+    out = BASE62[Number(n % 62n)] + out;
+    n /= 62n;
+  }
+  return out.padStart(length, "0");
 }
