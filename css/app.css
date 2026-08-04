@@ -426,16 +426,18 @@ main#main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction:
   margin: 0; min-width: 0; font-size: 13.5px; font-weight: 500; letter-spacing: -0.005em;
   color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.project-row-new {
-  color: var(--text-faint); border-style: dashed; border-color: var(--border);
-}
-.project-row-new:hover { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
+/* A plain row, not a boxed CTA — a dashed rectangle stretched across every
+   column just to frame one "+" tile read as an empty, half-finished row
+   rather than an inviting one. Muted like the rest of the list until
+   hovered, same as everything else here. */
+.project-row-new { color: var(--text-faint); }
+.project-row-new:hover { color: var(--accent); background: var(--accent-soft); }
 .project-row-swatch-new {
   display: flex; align-items: center; justify-content: center;
-  background: none; border: 1px dashed var(--border-strong);
+  background: var(--surface-2); border-radius: var(--r-sm);
   font-size: 17px; font-weight: 300; line-height: 1;
 }
-.project-row-new:hover .project-row-swatch-new { border-color: var(--accent); color: var(--accent); }
+.project-row-new:hover .project-row-swatch-new { background: var(--accent-soft); color: var(--accent); }
 
 /* ── video cards ── */
 .video-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(258px, 1fr)); gap: 18px; }
