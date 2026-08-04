@@ -1198,7 +1198,12 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onOp
     card.draggable = true;
     card.addEventListener("dragstart", (e) => {
       e.dataTransfer.setData(DRAG_TYPE, video.id);
-      e.dataTransfer.effectAllowed = "move";
+      // Every video is now both a "move into this folder" target (dropEffect
+      // "move") and a "become a version of this one" target (dropEffect
+      // "copy") — effectAllowed has to cover whichever one the card the drag
+      // ends up over asks for, or the browser can refuse the drop outright
+      // rather than just showing the wrong cursor.
+      e.dataTransfer.effectAllowed = "copyMove";
       card.classList.add("dragging");
     });
     card.addEventListener("dragend", () => card.classList.remove("dragging"));
