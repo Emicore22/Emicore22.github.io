@@ -35,6 +35,7 @@
   --warn: #f5a623;
   --warn-soft: rgba(245, 166, 35, 0.14);
   --danger: #f24822;
+  --danger-hover: #ff6440;
   --danger-soft: rgba(242, 72, 34, 0.14);
 
   /* radii */
@@ -43,10 +44,14 @@
   --r-lg: 14px;
   --r-pill: 999px;
 
-  /* elevation */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
-  --shadow-md: 0 6px 20px -6px rgba(0, 0, 0, 0.5);
-  --shadow-lg: 0 28px 70px -16px rgba(0, 0, 0, 0.7);
+  /* elevation — a whisper of light along the top edge before the drop shadow,
+     the way a slightly raised surface actually catches light. Composed into
+     the token itself, so every card, button, modal and toolbar that already
+     opts into --shadow-* gets it for free; flat/ghost controls, which never
+     reference these tokens, are untouched. */
+  --shadow-sm: inset 0 1px 0 rgba(255, 255, 255, 0.045), 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 6px 20px -6px rgba(0, 0, 0, 0.5);
+  --shadow-lg: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 28px 70px -16px rgba(0, 0, 0, 0.7);
 
   /* motion */
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
@@ -115,7 +120,7 @@ code {
 .empty-note { padding: 32px 16px; text-align: center; color: var(--text-faint); }
 .error-note {
   color: var(--danger); background: var(--danger-soft);
-  border: 1px solid rgba(255, 90, 103, 0.25); border-radius: var(--r);
+  border: 1px solid rgba(242, 72, 34, 0.25); border-radius: var(--r);
   padding: 14px 16px; margin: 16px;
 }
 
@@ -246,7 +251,7 @@ main#main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction:
   background: var(--danger); border-color: var(--danger); color: #fff;
   font-weight: 600; box-shadow: var(--shadow-sm);
 }
-.btn-danger:hover { background: #ff6d78; border-color: #ff6d78; }
+.btn-danger:hover { background: var(--danger-hover); border-color: var(--danger-hover); }
 
 .btn-sm { padding: 5px 10px; font-size: 12.5px; border-radius: var(--r-sm); }
 .btn-lg { padding: 11px 22px; font-size: 15px; border-radius: var(--r); }
@@ -299,9 +304,9 @@ main#main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction:
   min-width: 4.5em; max-width: 15em;
   padding: 7px 27px 7px 11px;
   background-repeat: no-repeat; background-position: right 9px center;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='6' viewBox='0 0 9 6'%3E%3Cpath d='M1 1l3.5 3.5L8 1' fill='none' stroke='%238b929e' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='6' viewBox='0 0 9 6'%3E%3Cpath d='M1 1l3.5 3.5L8 1' fill='none' stroke='%2396969e' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
-.select:hover { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='6' viewBox='0 0 9 6'%3E%3Cpath d='M1 1l3.5 3.5L8 1' fill='none' stroke='%23edeff3' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+.select:hover { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='6' viewBox='0 0 9 6'%3E%3Cpath d='M1 1l3.5 3.5L8 1' fill='none' stroke='%23f2f2f3' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
 .select option { background: var(--surface); color: var(--text); }
 .select-sm { padding: 4px 24px 4px 9px; font-size: 12px; background-position: right 8px center; }
 
@@ -1000,7 +1005,7 @@ textarea.composer-text { resize: vertical; min-height: 58px; line-height: 1.5; }
   max-width: 80vw; box-shadow: var(--shadow-lg);
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
-.toast[data-kind="error"] { border-color: var(--danger); color: #ffd8db; }
+.toast[data-kind="error"] { border-color: var(--danger); color: #ffd9cc; }
 
 /* ── spinner ── */
 .spinner-wrap {
