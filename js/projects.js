@@ -780,13 +780,15 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onOp
     );
     attachPreview(card, poster, v);
     wireDrag(card, v);
+    wireVersionDropTarget(card, project, v);
     return card;
   }
 
   // The same information as a video card, laid out as a single scannable
   // row instead — a name column wide enough to actually read, a real frame
   // no bigger than it needs to be to say which video this is. Everything a
-  // card can do (open, right-click menu, drag to a folder) works here too.
+  // card can do (open, right-click menu, drag to a folder, drag one video
+  // onto another to version it) works here too.
   function buildVideoRow(project, v) {
     const open = () => onOpenVideo(project.id, v.id);
     const latest = v.versions.at(-1);
@@ -823,6 +825,7 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onOp
     );
     attachPreview(row, poster, v);
     wireDrag(row, v);
+    wireVersionDropTarget(row, project, v);
     return row;
   }
 
@@ -1224,6 +1227,76 @@ export function renderProjectDetail(mount, store, projectId, { onOpenVideo, onOp
       if (!video || video.groupId === destGroupId) return; // already there
       moveVideo(project, video, destGroupId);
     });
+  }
+
+  // Drop target on a video's own card or row — dropping one video onto
+  // another attaches the dropped one as a new version instead of moving
+  // anything. A different modifier class from the folder drop (green, not
+  // blue) marks that this is a different, more consequential action: the
+  // dropped video stops existing as its own thing.
+  function wireVersionDropTarget(node, project, target) {
+    const accepts = (e) => e.dataTransfer.types.includes(DRAG_TYPE);
+    node.addEventListener("dragover", (e) => {
+      if (!accepts(e)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+    });
+    node.addEventListener("dragenter", (e) => accepts(e) && node.classList.add("version-drop-active"));
+    node.addEventListener("dragleave", () => node.classList.remove("version-drop-active"));
+    node.addEventListener("drop", (e) => {
+      if (!accepts(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      node.classList.remove("version-drop-active");
+      const sourceId = e.dataTransfer.getData(DRAG_TYPE);
+      if (sourceId === target.id) return; // dropped onto itself
+      const source = project.videos.find((v) => v.id === sourceId);
+      if (!source) return;
+      if (!source.versions.length) {
+        toast(`“${source.name}” has nothing uploaded yet.`, "error");
+        return;
+      }
+      mergeAsVersion(project, source, target);
+    });
+  }
+
+  // Takes the dropped video's latest file, server-side-copies it (the bytes
+  // never pass back through the browser) into a new version of the video it
+  // landed on, then removes the dropped video the same way Delete does —
+  // same Dropbox cleanup, same share-link revocation — since it no longer
+  // has an identity of its own once its footage belongs to something else.
+  async function mergeAsVersion(project, source, target) {
+    const ok = await confirmDialog({
+      title: `Add “${source.name}” as a new version of “${target.name}”?`,
+      body: [`“${source.name}” will be removed as its own video — its comments and any share links go with it.`],
+      confirmLabel: "Add as new version",
+    });
+    if (!ok) return;
+
+    const sourcePath = source.versions.at(-1).path;
+    const ext = (/\.[^./]+$/.exec(sourcePath) || [""])[0];
+    const n = (target.versions.at(-1)?.n || 0) + 1;
+    const safeName = source.name.replace(/[^\w.-]+/g, "_");
+    const destPath = `${mediaDir(project.id, target.id)}/v${n}-${safeName}${ext}`;
+
+    toast(`Adding “${source.name}” as v${n} of “${target.name}”…`);
+    try {
+      const meta = await dbx.copyFile(sourcePath, destPath);
+      const version = {
+        n, path: meta.path_display ?? destPath,
+        uploadedAt: new Date().toISOString(), label: `From “${source.name}”`,
+      };
+      await store.updateProject(project.id, (p) => {
+        const t = p.videos.find((v) => v.id === target.id);
+        if (t) { t.versions.push(version); t.currentVersion = n; }
+        return p;
+      });
+      await deleteVideo(store, project.id, source.id);
+      toast(`Added v${n} to “${target.name}”.`);
+      draw();
+    } catch (err) {
+      toast(`Could not add as a new version: ${err.message}`, "error");
+    }
   }
 
   function newFolderDialog(project) {

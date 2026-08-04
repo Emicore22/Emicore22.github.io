@@ -557,6 +557,13 @@ main#main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction:
   border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft);
 }
 .page-head .btn-link.drop-target-active { background: var(--accent-soft); color: var(--accent); }
+/* Green, not the folder-drop's blue — dropping one video onto another is a
+   different and more consequential action (the dropped video stops existing
+   on its own), so it gets a visibly different colour rather than reusing
+   "this will move" for "this will merge". */
+.video-card.version-drop-active {
+  border-color: var(--ok); box-shadow: 0 0 0 2px var(--ok-soft);
+}
 
 /* A folder's cover: up to four of its videos' own posters, tiled — a peek
    inside rather than a fifth colour invented just for the folder. Reuses
@@ -619,6 +626,7 @@ main#main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction:
 .video-row .card-menu-btn { justify-self: end; }
 .video-row.dragging { opacity: 0.4; }
 .video-row.drop-target-active { background: var(--accent-soft); }
+.video-row.version-drop-active { background: var(--ok-soft); }
 
 /* ── context menu ── */
 .context-menu {

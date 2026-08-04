@@ -225,3 +225,13 @@ export async function getTemporaryLink(path) {
   const res = await rpc("files/get_temporary_link", { path });
   return { url: res.link, expiresAt: Date.now() + 3.5 * 3600 * 1000 };
 }
+
+// Server-side copy — Dropbox moves the bytes on its own end, so an already-
+// uploaded video attaching itself as another video's new version never
+// passes back through the browser the way a fresh upload would.
+// autorename guards the unlikely case of a genuine path collision, the same
+// way every upload in this app already does.
+export async function copyFile(fromPath, toPath) {
+  const res = await rpc("files/copy_v2", { from_path: fromPath, to_path: toPath, autorename: true });
+  return res.metadata;
+}
