@@ -8,6 +8,7 @@ import { Annotator, ANNOT_COLORS } from "./annotations.js";
 import { CommentsPanel } from "./comments.js";
 import { versionSwitcher, statusPill } from "./versions.js";
 import { buildAuthorColors, colorResolver, authorInitials } from "./authors.js";
+import { penToolIcon, arrowToolIcon, boxToolIcon } from "./annot-icons.js";
 
 export function mountReviewScreen(mount, opts) {
   // opts: {
@@ -47,6 +48,8 @@ export function mountReviewScreen(mount, opts) {
 
   // Annotation toolbar (hidden until draw mode is on)
   let currentTool = "pen";
+  const TOOL_ICON = { pen: penToolIcon, arrow: arrowToolIcon, rect: boxToolIcon };
+  const TOOL_LABEL = { pen: "Pen", arrow: "Arrow", rect: "Box" };
   const toolBtns = ["pen", "arrow", "rect"].map((tool) =>
     el("button", {
       class: `tool-btn${tool === "pen" ? " active" : ""}`,
@@ -56,7 +59,7 @@ export function mountReviewScreen(mount, opts) {
         annotator.setTool(tool);
         toolbar.querySelectorAll(".tool-btn").forEach((b) => b.classList.toggle("active", b.dataset.tool === tool));
       },
-    }, { pen: "✏️ Pen", arrow: "↗ Arrow", rect: "▭ Box" }[tool])
+    }, TOOL_ICON[tool](), TOOL_LABEL[tool])
   );
   const colorBtns = ANNOT_COLORS.map((color, i) =>
     el("button", {

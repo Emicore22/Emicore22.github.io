@@ -840,9 +840,11 @@ button.status-pill:not(:disabled) { cursor: pointer; }
 .tool-btn {
   font: inherit; font-size: 12.5px; color: var(--text-dim); cursor: pointer;
   background: none; border: 1px solid transparent; border-radius: var(--r-sm);
-  padding: 5px 11px;
+  padding: 5px 11px 5px 9px;
+  display: inline-flex; align-items: center; gap: 6px;
   transition: color var(--fast) var(--ease), background var(--fast) var(--ease);
 }
+.tool-btn .icon-16 { width: 14px; height: 14px; }
 .tool-btn:hover { color: var(--text); background: var(--surface-2); }
 .tool-btn.active { color: var(--accent); background: var(--accent-soft); border-color: rgba(13, 153, 255, 0.32); }
 .toolbar-sep { width: 1px; height: 18px; background: var(--border); }
@@ -912,7 +914,10 @@ button.status-pill:not(:disabled) { cursor: pointer; }
 .comment:hover .resolve-check, .comment.selected .resolve-check { opacity: 1; }
 .comment-body { display: flex; align-items: baseline; gap: 8px; }
 .comment-text { white-space: pre-wrap; word-break: break-word; line-height: 1.5; }
-.annot-flag { font-size: 11px; flex: none; }
+/* align-self overrides the comment-body row's own baseline alignment — an
+   icon has no text baseline to line up on the way the emoji it replaced did. */
+.annot-flag { display: inline-flex; flex: none; align-self: center; color: var(--text-faint); }
+.annot-flag .icon-16 { width: 12px; height: 12px; }
 /* Every note carries three controls; at full strength they shout louder than
    the comments. Dimmed until the note is hovered, focused or selected — still
    present and readable, so nothing becomes hard to find. */

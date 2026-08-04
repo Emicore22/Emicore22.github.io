@@ -4,6 +4,7 @@
 import { el, fmtDate } from "./ui.js";
 import { secondsToTimecode } from "./timecode.js";
 import { authorInitials } from "./authors.js";
+import { penToolIcon, penFilledIcon } from "./annot-icons.js";
 
 export class CommentsPanel {
   constructor(mount, opts) {
@@ -19,7 +20,7 @@ export class CommentsPanel {
     this.annotating = false;
 
     this.tcChip = el("button", { class: "tc-chip", title: "Comment is pinned to this frame" }, "00:00:00:00");
-    this.annotBtn = el("button", { class: "ctrl-btn annot-toggle", title: "Draw on frame" }, "✏️");
+    this.annotBtn = el("button", { class: "ctrl-btn annot-toggle", title: "Draw on frame" }, penFilledIcon());
     this.textarea = el("textarea", {
       class: "composer-text",
       placeholder: "Leave a comment at the current frame…",
@@ -234,7 +235,7 @@ export class CommentsPanel {
       ),
       el("div", { class: "comment-body" },
         el("button", { class: "tc-chip tc-link" }, secondsToTimecode(c.timeSec, fps)),
-        c.annotation ? el("span", { class: "annot-flag", title: "Has drawing" }, "✏️") : null,
+        c.annotation ? el("span", { class: "annot-flag", title: "Has drawing" }, penToolIcon()) : null,
         el("span", { class: "comment-text" }, c.text)
       )
     );
