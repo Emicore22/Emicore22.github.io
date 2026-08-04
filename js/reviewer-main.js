@@ -9,7 +9,7 @@
 // be first.
 
 import { CONFIG } from "./config.js";
-import { el, modal, spinner } from "./ui.js";
+import { el, modal, spinner, toast } from "./ui.js";
 import * as api from "./worker-api.js";
 import { reviewerStore } from "./store.js";
 import { mountReviewScreen } from "./review-screen.js";
@@ -78,6 +78,38 @@ async function cachedMediaLink(token, video) {
   const link = { url: res.mediaUrl, expiresAt: res.mediaExpiresAt };
   mediaLinkCache.set(video.id, link);
   return link;
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// One at a time, not all at once: a browser that sees a page fire off several
+// downloads in the same instant blocks the rest and asks the visitor to
+// explicitly allow it — spacing them out is what keeps every video actually
+// arriving rather than only the first one or two.
+async function downloadAll(token, videos, btn) {
+  const downloadable = videos.filter((v) => v.versions.length > 0);
+  if (!downloadable.length) return;
+  btn.disabled = true;
+  const label = btn.textContent;
+  let failed = 0;
+  for (let i = 0; i < downloadable.length; i++) {
+    const video = downloadable[i];
+    btn.textContent = `Downloading ${i + 1}/${downloadable.length}…`;
+    try {
+      const { url } = await cachedMediaLink(token, video);
+      const link = el("a", { href: url, download: "" });
+      document.body.append(link);
+      link.click();
+      link.remove();
+    } catch (err) {
+      failed++;
+      toast(`Could not download “${video.name}”: ${err.message}`, "error");
+    }
+    if (i < downloadable.length - 1) await sleep(700);
+  }
+  btn.disabled = false;
+  btn.textContent = label;
+  if (!failed) toast(`Started ${downloadable.length} download${downloadable.length === 1 ? "" : "s"}.`);
 }
 
 // A redraw throws the old cards away, but a detached <video> can go on
@@ -178,10 +210,25 @@ function showFolderGrid(token, folderSession, name) {
     return card;
   });
 
+  const downloadable = folderSession.videos.filter((v) => v.versions.length > 0);
+  const downloadAllBtn = downloadable.length
+    ? el("button", {
+        class: "btn btn-sm",
+        title: "Download every uploaded video in this folder",
+      }, `Download all (${downloadable.length})`)
+    : null;
+  if (downloadAllBtn) {
+    downloadAllBtn.addEventListener("click", () => downloadAll(token, folderSession.videos, downloadAllBtn));
+  }
+
   releasePreviews();
   main.replaceChildren(
     el("div", { class: "page" },
-      el("div", { class: "page-head" }, el("h1", {}, folderSession.group.name)),
+      el("div", { class: "page-head" },
+        el("h1", {}, folderSession.group.name),
+        el("span", { class: "spacer" }),
+        downloadAllBtn
+      ),
       cards.length
         ? el("div", { class: "video-grid" }, ...cards)
         : el("p", { class: "dim empty-note" }, "No videos in this folder yet.")
