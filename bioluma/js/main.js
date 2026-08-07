@@ -44,6 +44,10 @@ const panel = new Panel(panelEl, { onChange, onAction });
 panel.build(P, creature);
 refreshPresetList();
 
+// On a phone the panel is an overlay, so opening on top of the canvas would
+// hide the one thing worth showing first. The reveal chevron stays put.
+if (matchMedia('(max-width: 720px)').matches) shell.classList.add('panel-hidden');
+
 sizeStage(true);
 sim.setDriver(creature, P);
 renderer.clear(P);

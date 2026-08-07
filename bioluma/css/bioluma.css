@@ -443,6 +443,18 @@ input[type="color"] {
 
 .btn-row { display: flex; gap: 6px; flex-wrap: wrap; }
 
+/* Everything in the panel is reachable by keyboard, so everything in it needs
+   a visible focus state — the chips and swatches carry no other affordance. */
+.btn:focus-visible,
+.chip:focus-visible,
+.pal:focus-visible,
+.icon-btn:focus-visible,
+.reveal:focus-visible,
+.sec > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .panel-foot { padding: 12px 14px 22px; }
 
 .keys {
