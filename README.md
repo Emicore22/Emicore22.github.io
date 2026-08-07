@@ -54,7 +54,16 @@ index.html      owner app        review.html   client review page
 js/             all app modules  css/app.css   theme (edit :root tokens to restyle)
 worker/         Cloudflare Worker (deployed separately, see worker/README.md)
 setup/          one-time setup guide + refresh-token helper page
+bioluma/        Bioluma — a separate app, see below
 ```
+
+## Also in this repo
+
+**[Bioluma](bioluma/)** — a generative motion tool where sea creatures drive
+the visuals: octopuses, shoals, jellyfish and plankton painting colour blooms
+and hairline trails on paper. Rich palettes, everything tweakable, PNG and video
+export. Shares nothing with Kontraframe but the host: open `bioluma/index.html`
+or visit `/bioluma`.
 
 ## Local development
 

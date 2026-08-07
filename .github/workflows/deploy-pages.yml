@@ -30,6 +30,10 @@ jobs:
           cp index.html review.html dist/kontraframe/
           cp -R js css dist/kontraframe/
           [ -d setup ] && cp -R setup dist/
+          # Bioluma is a separate app in the same repo; it lives one level up
+          # from Kontraframe so its URL is /bioluma, matching where GitHub
+          # Pages already serves it.
+          [ -d bioluma ] && cp -R bioluma dist/
           # Root sends visitors to the app instead of a bare 404.
           cat > dist/index.html <<'HTML'
           <!DOCTYPE html>

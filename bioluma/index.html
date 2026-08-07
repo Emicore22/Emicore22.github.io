@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Bioluma — sea-creature motion painting</title>
+  <meta name="description" content="A generative motion tool where octopuses, shoals, jellyfish and plankton paint the frame. Rich palettes, tweakable everything, PNG and video export.">
+  <link rel="stylesheet" href="css/bioluma.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%230b1020'/><circle cx='38' cy='42' r='20' fill='%23c04ce0'/><circle cx='64' cy='58' r='14' fill='%2338d6c8'/></svg>">
+
+  <!-- The module graph is four levels deep (main → creatures → common → sim);
+       naming it here collapses four sequential round trips into one parallel
+       fetch. Mirrors the static imports — update it when those change. -->
+  <link rel="modulepreload" href="js/main.js">
+  <link rel="modulepreload" href="js/sim.js">
+  <link rel="modulepreload" href="js/noise.js">
+  <link rel="modulepreload" href="js/rng.js">
+  <link rel="modulepreload" href="js/render.js">
+  <link rel="modulepreload" href="js/palettes.js">
+  <link rel="modulepreload" href="js/params.js">
+  <link rel="modulepreload" href="js/ui.js">
+  <link rel="modulepreload" href="js/export.js">
+  <link rel="modulepreload" href="js/creatures/index.js">
+  <link rel="modulepreload" href="js/creatures/common.js">
+  <link rel="modulepreload" href="js/creatures/krill.js">
+  <link rel="modulepreload" href="js/creatures/fish.js">
+  <link rel="modulepreload" href="js/creatures/octopus.js">
+  <link rel="modulepreload" href="js/creatures/jelly.js">
+  <link rel="modulepreload" href="js/creatures/squid.js">
+  <link rel="modulepreload" href="js/creatures/ray.js">
+  <link rel="modulepreload" href="js/creatures/siphon.js">
+  <link rel="modulepreload" href="js/creatures/anemone.js">
+</head>
+<body>
+  <div id="shell" class="shell">
+    <aside id="panel" class="panel" aria-label="Controls"></aside>
+
+    <main class="main">
+      <div id="stagebar" class="stagebar"></div>
+      <div id="stage" class="stage">
+        <canvas id="view" width="960" height="1200" aria-label="Generative canvas"></canvas>
+      </div>
+      <div id="hud" class="hud"></div>
+    </main>
+
+    <button id="reveal" class="reveal" title="Show panel (H)" aria-label="Show panel">›</button>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <noscript>
+    <p class="noscript">Bioluma is a canvas app — it needs JavaScript to run.</p>
+  </noscript>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
